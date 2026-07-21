@@ -59,7 +59,7 @@ def create_itinerary():
         "start_date": data.get("start_date", ""),
         "end_date": data.get("end_date", ""),
         "notes": data.get("notes", ""),
-        "created_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
     save_itinerary(itinerary)
     return jsonify(itinerary), 201

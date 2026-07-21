@@ -42,7 +42,7 @@ Students build the monolith first, then refactor it into microservices, and fina
 | GET    | `/itineraries`      | Yes (JWT)     | List all itineraries for the logged-in user |
 
 Protected routes expect the header:  
-`Authorization: ******
+`Authorization: Bearer <your-token>`
 
 ### Example requests
 
@@ -56,23 +56,24 @@ curl -X POST http://localhost:5000/register \
 curl -X POST http://localhost:5000/login \
   -H "Content-Type: application/json" \
   -d '{"username": "alice", "password": "s3cr3t"}'
+# Save the returned token: TOKEN=<value from .token field>
 
 # Search destinations
 curl "http://localhost:5000/destinations?tag=beach&max_cost=100"
 
-# Personalised recommendations (replace <token>)
+# Personalised recommendations
 curl http://localhost:5000/recommendations \
-  -H "Authorization: ******"
+  -H "Authorization: Bearer $TOKEN"
 
 # Create an itinerary
 curl -X POST http://localhost:5000/itineraries \
   -H "Content-Type: application/json" \
-  -H "Authorization: ******" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"title": "Beach Escape", "destinations": ["Bali"], "start_date": "2025-07-01", "end_date": "2025-07-14"}'
 
 # List itineraries
 curl http://localhost:5000/itineraries \
-  -H "Authorization: ******"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ---

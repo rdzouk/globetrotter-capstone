@@ -26,10 +26,11 @@ auth_bp = Blueprint("auth", __name__)
 
 def create_token(username: str, secret: str) -> str:
     """Return a signed JWT for *username* valid for 24 hours."""
+    now = datetime.datetime.now(datetime.timezone.utc)
     payload = {
         "sub": username,
-        "iat": datetime.datetime.utcnow(),
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24),
+        "iat": now,
+        "exp": now + datetime.timedelta(hours=24),
     }
     return jwt.encode(payload, secret, algorithm="HS256")
 
