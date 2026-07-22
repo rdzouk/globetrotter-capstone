@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Yaoundé Places — GlobeTrotter{% endblock %}
+{% block head_extra %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+{% endblock %}
+{% block content %}
+  <h1>Explore Yaoundé</h1>
+  <p class="muted">Real restaurants, sport complexes, spas, hotels and attractions across the city — Bastos, Hippodrome, Nlongkak, Centre-ville and more.</p>
+
+  <form id="search-form" class="search-bar">
+    <input type="text" id="q" placeholder="Search by name, neighborhood, description...">
+    <select id="category">
+      <option value="">Any category</option>
+      <option value="restaurant">Restaurants</option>
+      <option value="sports">Sport complexes</option>
+      <option value="spa">Spas &amp; relaxation</option>
+      <option value="nightlife">Nightlife</option>
+      <option value="hotel">Hotels</option>
+      <option value="attraction">Attractions &amp; parks</option>
+    </select>
+    <select id="neighborhood">
+      <option value="">Any neighborhood</option>
+      <option value="Bastos">Bastos</option>
+      <option value="Centre-ville">Centre-ville</option>
+      <option value="Hippodrome">Hippodrome</option>
+      <option value="Nlongkak">Nlongkak</option>
+      <option value="Elig-Essono">Elig-Essono</option>
+      <option value="Etoa-Meki">Etoa-Meki</option>
+      <option value="Essos">Essos</option>
+      <option value="Ngousso">Ngousso</option>
+      <option value="Odza">Odza</option>
+      <option value="Biyem-Assi">Biyem-Assi</option>
+      <option value="Mvan">Mvan</option>
+      <option value="Mimboman">Mimboman</option>
+      <option value="Warda">Warda</option>
+      <option value="Nkolbisson">Nkolbisson</option>
+      <option value="Nsimalen">Nsimalen</option>
+      <option value="Olembe">Olembe</option>
+      <option value="Soa">Soa</option>
+    </select>
+    <select id="tag">
+      <option value="">Any vibe</option>
+      <option value="fancy">Fancy</option>
+      <option value="casual">Casual</option>
+      <option value="affordable">Affordable</option>
+      <option value="live-music">Live music</option>
+      <option value="outdoor">Outdoor</option>
+      <option value="family-friendly">Family-friendly</option>
+    </select>
+    <button type="submit">Search</button>
+  </form>
+
+  <div id="map" class="map-view"></div>
+
+  <div id="destinations-grid" class="card-grid">
+    <p class="muted">Loading places...</p>
+  </div>
+{% endblock %}
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+  // Yaoundé city center
+  const map = L.map('map').setView([3.8667, 11.5167], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19
+  }).addTo(map);
+
+  const categoryColors = {
+    restaurant: '#c0392b',
+    sports: '#2980b9',
+    spa: '#8e44ad',
+    nightlife: '#d35400',
+    hotel: '#16a085',
+    attraction: '#27ae60'
+  };
+
+  let markers = [];
+
+  function clearMarkers() {
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
+  }
+
+  function plotMarkers(places) {
+    clearMarkers();
+    if (!places.length) return;
+    const bounds = [];
+    places.forEach(d => {
+      const color = categoryColors[d.category] || '#555';
+      const marker = L.circleMarker([d.lat, d.lng], {
+        radius: 8,
+        fillColor: color,
+        color: '#fff',
+        weight: 2,
+        fillOpacity: 0.9
+      }).addTo(map);
+      marker.bindPopup(`
+        <strong>${d.name}</strong><br>
+        ${d.category} · ${d.neighborhood}<br>
+        ⭐ ${d.rating} (${d.rating_count} ratings)<br>
+        <button onclick="openBookModal(${d.id}, '${d.name.replace(/'/g, "\\'")}')">Plan itinerary</button>
+      `);
+      markers.push(marker);
+      bounds.push([d.lat, d.lng]);
+    });
+    if (bounds.length) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+  }
+
+  async function loadDestinations() {
+    const q = document.getElementById('q').value;
+    const category = document.getElementById('category').value;
+    const neighborhood = document.getElementById('neighborhood').value;
+    const tag = document.getElementById('tag').value;
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (category) params.set('category', category);
+    if (neighborhood) params.set('neighborhood', neighborhood);
+    if (tag) params.set('tag', tag);
+
+    const grid = document.getElementById('destinations-grid');
+    grid.innerHTML = '<p class="muted">Loading...</p>';
+
+    try {
+      const res = await fetch('/destinations?' + params.toString());
+      const data = await res.json();
+      plotMarkers(data);
+      if (!data.length) {
+        grid.innerHTML = '<p class="muted">No places match that search.</p>';
+        return;
+      }
+      grid.innerHTML = data.map(destinationCard).join('');
+    } catch (err) {
+      grid.innerHTML = '<p class="error">Could not load places: ' + err + '</p>';
+    }
+  }
+
+  function destinationCard(d) {
+    const stars = '⭐'.repeat(Math.round(d.rating));
+    return `
+      <div class="card">
+        <div class="card-header">
+          <h3>${d.name}</h3>
+          <span class="category-badge category-${d.category}">${d.category}</span>
+        </div>
+        <p class="muted">${d.neighborhood} · ${d.address}</p>
+        <p>${d.description}</p>
+        <div class="tags">${d.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
+        <p class="popularity">${stars} ${d.rating} (${d.rating_count} ratings)</p>
+        <button onclick="focusOnMap(${d.lat}, ${d.lng}); openBookModal(${d.id}, '${d.name.replace(/'/g, "\\'")}')">Plan itinerary</button>
+        <button class="secondary" onclick="focusOnMap(${d.lat}, ${d.lng})">Show on map</button>
+      </div>
+    `;
+  }
+
+  function focusOnMap(lat, lng) {
+    map.setView([lat, lng], 16);
+  }
+
+  document.getElementById('search-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    loadDestinations();
+  });
+
+  loadDestinations();
+</script>
+{% endblock %}

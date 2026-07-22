@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Recommendations — GlobeTrotter{% endblock %}
+{% block head_extra %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+{% endblock %}
+{% block content %}
+  <h1>Picked for you</h1>
+  <p class="muted">Based on your interests and where you haven't been yet.</p>
+  <div id="map" class="map-view"></div>
+  <div id="rec-grid" class="card-grid">
+    <p class="muted">Loading...</p>
+  </div>
+{% endblock %}
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+  const map = L.map('map').setView([3.8667, 11.5167], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19
+  }).addTo(map);
+
+  async function loadRecommendations() {
+    const grid = document.getElementById('rec-grid');
+    const token = localStorage.getItem('gt_token');
+    if (!token) {
+      grid.innerHTML = '<p class="muted">Please <a href="{{ url_for("page_login") }}">log in</a> to see personalized recommendations.</p>';
+      return;
+    }
+    try {
+      const res = await fetch('/recommendations', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (res.status === 401) {
+        localStorage.removeItem('gt_token');
+        grid.innerHTML = '<p class="muted">Session expired. Please <a href="{{ url_for("page_login") }}">log in</a> again.</p>';
+        return;
+      }
+      const data = await res.json();
+      if (!data.length) {
+        grid.innerHTML = '<p class="muted">No recommendations yet — try adding interests or exploring destinations first.</p>';
+        return;
+      }
+      const bounds = [];
+      data.forEach(d => {
+        L.circleMarker([d.lat, d.lng], { radius: 8, fillColor: '#1a6b6b', color: '#fff', weight: 2, fillOpacity: 0.9 })
+          .addTo(map)
+          .bindPopup(`<strong>${d.name}</strong><br>${d.category} · ${d.neighborhood}<br>⭐ ${d.rating}`);
+        bounds.push([d.lat, d.lng]);
+      });
+      if (bounds.length) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+      grid.innerHTML = data.map(d => `
+        <div class="card">
+          <div class="card-header">
+            <h3>${d.name}</h3>
+            <span class="category-badge category-${d.category}">${d.category}</span>
+          </div>
+          <p class="muted">${d.neighborhood} · ${d.address}</p>
+          <p>${d.description}</p>
+          <div class="tags">${d.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
+          <p class="popularity">⭐ ${d.rating} (${d.rating_count} ratings)</p>
+          <button onclick="openBookModal(${d.id}, '${d.name.replace(/'/g, "\\'")}')">Plan itinerary</button>
+        </div>
+      `).join('');
+    } catch (err) {
+      grid.innerHTML = '<p class="error">Could not load recommendations: ' + err + '</p>';
+    }
+  }
+  loadRecommendations();
+</script>
+{% endblock %}

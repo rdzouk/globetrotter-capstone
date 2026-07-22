@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}My Itineraries — GlobeTrotter{% endblock %}
+{% block head_extra %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+{% endblock %}
+{% block content %}
+  <h1>My itineraries</h1>
+  <div id="map" class="map-view"></div>
+  <div id="itin-list" class="card-grid">
+    <p class="muted">Loading...</p>
+  </div>
+{% endblock %}
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+  const map = L.map('map').setView([3.8667, 11.5167], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19
+  }).addTo(map);
+
+  async function loadItineraries() {
+    const list = document.getElementById('itin-list');
+    const token = localStorage.getItem('gt_token');
+    if (!token) {
+      list.innerHTML = '<p class="muted">Please <a href="{{ url_for("page_login") }}">log in</a> to see your itineraries.</p>';
+      return;
+    }
+    try {
+      const [itinRes, destRes] = await Promise.all([
+        fetch('/itineraries', { headers: { 'Authorization': 'Bearer ' + token } }),
+        fetch('/destinations')
+      ]);
+      if (itinRes.status === 401) {
+        localStorage.removeItem('gt_token');
+        list.innerHTML = '<p class="muted">Session expired. Please <a href="{{ url_for("page_login") }}">log in</a> again.</p>';
+        return;
+      }
+      const itineraries = await itinRes.json();
+      const destinations = await destRes.json();
+      const byId = Object.fromEntries(destinations.map(d => [d.id, d]));
+
+      if (!itineraries.length) {
+        list.innerHTML = '<p class="muted">No itineraries yet. Go to <a href="{{ url_for("page_home") }}">Destinations</a> and plan one.</p>';
+        return;
+      }
+      const bounds = [];
+      itineraries.forEach(it => {
+        const dest = byId[it.destination_id];
+        if (dest) {
+          L.circleMarker([dest.lat, dest.lng], { radius: 8, fillColor: '#1a6b6b', color: '#fff', weight: 2, fillOpacity: 0.9 })
+            .addTo(map)
+            .bindPopup(`<strong>${dest.name}</strong><br>${it.start_date} → ${it.end_date}`);
+          bounds.push([dest.lat, dest.lng]);
+        }
+      });
+      if (bounds.length) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+
+      list.innerHTML = itineraries.map(it => {
+        const dest = byId[it.destination_id];
+        return `
+          <div class="card">
+            <h3>${dest ? dest.name : 'Place #' + it.destination_id}</h3>
+            <p class="muted">${dest ? dest.neighborhood + ' · ' + dest.category : ''}</p>
+            <p>${it.start_date} → ${it.end_date}</p>
+            ${it.notes ? `<p class="muted">${it.notes}</p>` : ''}
+          </div>
+        `;
+      }).join('');
+    } catch (err) {
+      list.innerHTML = '<p class="error">Could not load itineraries: ' + err + '</p>';
+    }
+  }
+
+  // After a successful booking anywhere in the app, refresh this list if we're on this page.
+  document.addEventListener('gt:itinerary-created', loadItineraries);
+
+  loadItineraries();
+</script>
+{% endblock %}

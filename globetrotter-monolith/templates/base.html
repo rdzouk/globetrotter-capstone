@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}GlobeTrotter{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <nav class="navbar">
+    <a href="{{ url_for('page_home') }}" class="brand">🌍 GlobeTrotter</a>
+    <div class="nav-links">
+      <a href="{{ url_for('page_home') }}">Destinations</a>
+      <a href="{{ url_for('page_recommendations') }}">Recommendations</a>
+      <a href="{{ url_for('page_itineraries') }}">My Itineraries</a>
+      <span id="nav-auth"></span>
+    </div>
+  </nav>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Booking modal, shared across all pages -->
+  <div id="book-modal" class="modal hidden">
+    <div class="modal-box">
+      <h2 id="book-modal-title">Plan a trip</h2>
+      <form id="book-form">
+        <input type="hidden" id="book-destination-id">
+        <label>Start date</label>
+        <input type="date" id="book-start" required>
+        <label>End date</label>
+        <input type="date" id="book-end" required>
+        <label>Notes</label>
+        <textarea id="book-notes" rows="3" placeholder="Optional notes"></textarea>
+        <div class="modal-actions">
+          <button type="button" onclick="closeBookModal()" class="secondary">Cancel</button>
+          <button type="submit">Save itinerary</button>
+        </div>
+        <p id="book-message"></p>
+      </form>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

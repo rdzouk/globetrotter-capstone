@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Register — GlobeTrotter{% endblock %}
+{% block content %}
+  <div class="form-card">
+    <h1>Create an account</h1>
+    <form id="register-form">
+      <label>Username</label>
+      <input type="text" id="username" required>
+
+      <label>Password</label>
+      <input type="password" id="password" required minlength="4">
+
+      <label>Interests (pick any that apply)</label>
+      <div class="checkbox-group">
+        {% for tag in ["restaurant","fancy","casual","affordable","spa","sports","nightlife","hotel","attraction","live-music","outdoor","family-friendly"] %}
+        <label class="checkbox-label"><input type="checkbox" value="{{ tag }}" class="pref-checkbox"> {{ tag }}</label>
+        {% endfor %}
+      </div>
+
+      <button type="submit">Register</button>
+      <p id="register-message"></p>
+    </form>
+    <p>Already have an account? <a href="{{ url_for('page_login') }}">Log in</a></p>
+  </div>
+{% endblock %}
+{% block scripts %}
+<script>
+  document.getElementById('register-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    const preferences = Array.from(document.querySelectorAll('.pref-checkbox:checked')).map(c => c.value);
+    const msg = document.getElementById('register-message');
+
+    try {
+      const res = await fetch('/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, preferences })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        msg.textContent = data.error || 'Registration failed';
+        msg.className = 'error';
+        return;
+      }
+      msg.textContent = 'Account created! Redirecting to login...';
+      msg.className = 'success';
+      setTimeout(() => window.location.href = "{{ url_for('page_login') }}", 800);
+    } catch (err) {
+      msg.textContent = 'Network error: ' + err;
+      msg.className = 'error';
+    }
+  });
+</script>
+{% endblock %}
