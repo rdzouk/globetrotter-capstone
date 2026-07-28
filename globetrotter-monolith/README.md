@@ -1,16 +1,76 @@
-# GlobeTrotter Travel Assistant — Yaoundé Edition (Phase 1: Monolith)
+# GlobeTrotter Travel Assistant — Yaoundé Edition
 
-A single Flask process handling all requests, with a JSON file as the
-only datastore. This build is personalized to **Yaoundé, Cameroon**:
-53 real venues (restaurants, sport complexes, spas, hotels, nightlife,
-and attractions) sourced from real place data, spread across 17
-neighborhoods including a strong concentration in Bastos, plotted on
-a live interactive map (Leaflet + OpenStreetMap — no API key needed).
+A single Flask API, personalized to **Yaoundé, Cameroon** (53 real venues
+across 17 neighborhoods), with two clients: a web frontend and a Flutter
+mobile app — both talking to the same backend.
 
-This is still the deliberately-limited course baseline: no database,
-no redundancy, no horizontal scaling. Every weakness you hit here is
-the motivation for the next phase (database → services → distributed
-system).
+```
+globetrotter-monolith/
+├── backend/    # Flask JSON API — the only place data lives
+├── frontend/   # HTML/CSS/JS web client (browser)
+└── mobile/     # Flutter/Dart client (Android/iOS) — see mobile/README.md
+```
+
+The backend is a pure JSON API (CORS-enabled) — it has no idea whether
+it's being called by a browser, a phone, or curl. That separation is
+what let the Flutter app get added without touching a single line of
+Python.
+
+## What's new in this build
+
+- **Flexible identity**: register with a `name` (can duplicate — two
+  different people can both be "Alice") plus **either an email or a
+  phone number** as your unique identifier. Log in with whichever one
+  you registered with.
+- **Visited places + reviews**: mark any itinerary as visited, attach
+  a star rating, a comment, and the date — this becomes a public
+  review on that place's page (`GET /destinations/<id>/reviews`).
+- **App feedback**: a separate channel (`POST`/`GET /feedback`) for
+  comments and critiques about the app itself, not about a place.
+- **Light/dark mode**: implemented client-side in the Flutter app
+  (Settings tab) and persisted on-device — this needs no backend
+  support since it's purely a rendering choice.
+- **Flutter mobile app**: full client in `mobile/` — see its README
+  for setup, and note the backend URL you'll need to configure
+  depending on emulator vs. physical device.
+
+## Quick start (backend)
+
+```bash
+cd backend
+python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+pytest -q            # 23 tests
+python app.py          # http://localhost:5000
+```
+
+## Quick start (web frontend)
+
+```bash
+cd frontend
+python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python serve.py       # http://localhost:5173
+```
+
+This is a tiny, separate Flask app (`serve.py`) whose only job is
+rendering the HTML templates — it has no business logic and never
+touches `data.json`. Every page's JavaScript calls the real backend
+directly using `API_BASE_URL` (set in `static/app.js`, defaults to
+`http://localhost:5000`) — change that if your backend runs elsewhere.
+
+## Quick start (mobile)
+
+```bash
+cd mobile
+flutter pub get
+flutter run
+```
+
+**Read `mobile/README.md` first** — the backend URL you configure
+depends on whether you're using an emulator or a real phone.
+
+
 
 ## Architecture
 
@@ -118,25 +178,41 @@ it from the 12-destination list below.
 
 ### `POST /register`
 ```json
-// request
-{ "username": "gaetan", "password": "pass1234", "preferences": ["mountain", "adventure"] }
-// 201 response
-{ "id": 1, "username": "gaetan" }
+{ "name": "Gaetan", "email": "gaetan@example.com", "password": "pass1234", "preferences": ["fancy","restaurant"] }
 ```
-`preferences` is optional (defaults to `[]`) — it's a list of tags
-(e.g. `beach`, `mountain`, `culture`, `food`, `adventure`, `city`,
-`relaxation`, `nature`, `history`, `luxury`, `skiing`) used later by
-`/recommendations`.
+`name` may duplicate across accounts — it's just a display name.
+Provide **either `email` or `phone`** (or both) — whichever you give
+must be unique account-wide. Example with phone instead:
+```json
+{ "name": "Gaetan", "phone": "+237699112233", "password": "pass1234" }
+```
 
 ### `POST /login`
 ```json
-// request
-{ "username": "gaetan", "password": "pass1234" }
-// 200 response
-{ "token": "<JWT>" }
+{ "email": "gaetan@example.com", "password": "pass1234" }
 ```
-Send this token as `Authorization: Bearer <JWT>` on every protected
-route below. Tokens expire after 24 hours (see `auth.TOKEN_TTL_HOURS`).
+or
+```json
+{ "phone": "+237699112233", "password": "pass1234" }
+```
+Returns `{ "token": "<JWT>", "name": "Gaetan" }`.
+
+### `PATCH /itineraries/<id>/visit` (auth required, owner only)
+Marks a planned itinerary as visited and attaches a review:
+```json
+{ "rating": 5, "comment": "Loved it!", "visited_date": "2026-08-03" }
+```
+
+### `GET /destinations/<id>/reviews`
+Public — every user's review of that place (reviewer name, rating,
+comment, visited date), newest first.
+
+### `POST /feedback` (auth required) / `GET /feedback` (public)
+Comments and critiques about the **app itself** — separate from place
+reviews above:
+```json
+{ "message": "Really like the Yaoundé map!", "rating": 5 }
+```
 
 ### `GET /destinations`
 Public, no auth. Returns Yaoundé venues. Query params (all optional, combinable):

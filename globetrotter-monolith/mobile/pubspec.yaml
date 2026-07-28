@@ -1,0 +1,26 @@
+name: globetrotter_mobile
+description: GlobeTrotter Travel Assistant — Yaoundé Edition (Flutter client)
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  http: ^1.2.1                 # calls the Flask API
+  provider: ^6.1.2             # theme + auth state management
+  shared_preferences: ^2.2.3   # persist JWT + theme choice on device
+  flutter_map: ^6.1.0          # interactive OpenStreetMap map (Leaflet's Flutter equivalent)
+  latlong2: ^0.9.1             # lat/lng type used by flutter_map
+  intl: ^0.19.0                # date formatting
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

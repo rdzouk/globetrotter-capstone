@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}My Itineraries — GlobeTrotter{% endblock %}
+{% block head_extra %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+{% endblock %}
+{% block content %}
+  <h1>My itineraries</h1>
+  <div id="map" class="map-view"></div>
+  <div id="itin-list" class="card-grid">
+    <p class="muted">Loading...</p>
+  </div>
+
+  <!-- Mark visited / review modal -->
+  <div id="review-modal" class="modal hidden">
+    <div class="modal-box">
+      <h2>How was it?</h2>
+      <form id="review-form">
+        <input type="hidden" id="review-itinerary-id">
+        <label>Rating</label>
+        <div class="star-picker" id="star-picker">
+          <span data-value="1">★</span><span data-value="2">★</span><span data-value="3">★</span><span data-value="4">★</span><span data-value="5">★</span>
+        </div>
+        <label>Visited on</label>
+        <input type="date" id="review-visited-date" required>
+        <label>Comment</label>
+        <textarea id="review-comment" rows="3" placeholder="What did you think?"></textarea>
+        <div class="modal-actions">
+          <button type="button" onclick="closeReviewModal()" class="secondary">Cancel</button>
+          <button type="submit">Save review</button>
+        </div>
+        <p id="review-message"></p>
+      </form>
+    </div>
+  </div>
+{% endblock %}
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+  const map = L.map('map').setView([3.8667, 11.5167], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19
+  }).addTo(map);
+
+  let selectedRating = 0;
+  document.querySelectorAll('#star-picker span').forEach(star => {
+    star.addEventListener('click', () => {
+      selectedRating = parseInt(star.dataset.value, 10);
+      document.querySelectorAll('#star-picker span').forEach(s => {
+        s.classList.toggle('filled', parseInt(s.dataset.value, 10) <= selectedRating);
+      });
+    });
+  });
+
+  function openReviewModal(itineraryId) {
+    document.getElementById('review-itinerary-id').value = itineraryId;
+    document.getElementById('review-message').textContent = '';
+    document.getElementById('review-form').reset();
+    document.getElementById('review-visited-date').valueAsDate = new Date();
+    selectedRating = 0;
+    document.querySelectorAll('#star-picker span').forEach(s => s.classList.remove('filled'));
+    document.getElementById('review-modal').classList.remove('hidden');
+  }
+
+  function closeReviewModal() {
+    document.getElementById('review-modal').classList.add('hidden');
+  }
+
+  document.getElementById('review-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const token = localStorage.getItem('gt_token');
+    const msg = document.getElementById('review-message');
+    if (!selectedRating) {
+      msg.textContent = 'Please pick a star rating.';
+      msg.className = 'error';
+      return;
+    }
+    const itineraryId = document.getElementById('review-itinerary-id').value;
+    const payload = {
+      rating: selectedRating,
+      comment: document.getElementById('review-comment').value,
+      visited_date: document.getElementById('review-visited-date').value
+    };
+    try {
+      const res = await fetch(`${API_BASE_URL}/itineraries/${itineraryId}/visit`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        msg.textContent = (data.errors && data.errors.join(', ')) || data.error || 'Could not save review';
+        msg.className = 'error';
+        return;
+      }
+      closeReviewModal();
+      loadItineraries();
+    } catch (err) {
+      msg.textContent = 'Network error: ' + err;
+      msg.className = 'error';
+    }
+  });
+
+  async function loadItineraries() {
+    const list = document.getElementById('itin-list');
+    const token = localStorage.getItem('gt_token');
+    if (!token) {
+      list.innerHTML = '<p class="muted">Please <a href="{{ url_for("page_login") }}">log in</a> to see your itineraries.</p>';
+      return;
+    }
+    try {
+      const [itinRes, destRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/itineraries`, { headers: { 'Authorization': 'Bearer ' + token } }),
+        fetch(`${API_BASE_URL}/destinations`)
+      ]);
+      if (itinRes.status === 401) {
+        localStorage.removeItem('gt_token');
+        list.innerHTML = '<p class="muted">Session expired. Please <a href="{{ url_for("page_login") }}">log in</a> again.</p>';
+        return;
+      }
+      const itineraries = await itinRes.json();
+      const destinations = await destRes.json();
+      const byId = Object.fromEntries(destinations.map(d => [d.id, d]));
+
+      if (!itineraries.length) {
+        list.innerHTML = '<p class="muted">No itineraries yet. Go to <a href="{{ url_for("page_home") }}">Destinations</a> and plan one.</p>';
+        return;
+      }
+      const bounds = [];
+      itineraries.forEach(it => {
+        const dest = byId[it.destination_id];
+        if (dest) {
+          L.circleMarker([dest.lat, dest.lng], { radius: 8, fillColor: '#1a6b6b', color: '#fff', weight: 2, fillOpacity: 0.9 })
+            .addTo(map)
+            .bindPopup(`<strong>${dest.name}</strong><br>${it.start_date} → ${it.end_date}`);
+          bounds.push([dest.lat, dest.lng]);
+        }
+      });
+      if (bounds.length) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+
+      list.innerHTML = itineraries.map(it => {
+        const dest = byId[it.destination_id];
+        const stars = (n) => '★'.repeat(Math.round(n)) + '☆'.repeat(5 - Math.round(n));
+        return `
+          <div class="card">
+            <div class="card-header">
+              <h3>${dest ? dest.name : 'Place #' + it.destination_id}</h3>
+              ${it.visited ? '<span class="category-badge" style="background:#27ae60;">Visited</span>' : ''}
+            </div>
+            <p class="muted">${dest ? dest.neighborhood + ' · ' + dest.category : ''}</p>
+            <p>${it.start_date} → ${it.end_date}</p>
+            ${it.notes ? `<p class="muted">${it.notes}</p>` : ''}
+            ${it.review ? `
+              <div class="review-block">
+                <span class="stars">${stars(it.review.rating)}</span>
+                <span class="muted"> visited ${it.review.visited_date}</span>
+                ${it.review.comment ? `<p>${it.review.comment}</p>` : ''}
+              </div>
+            ` : `<button class="secondary" onclick="openReviewModal(${it.id})">Mark visited &amp; review</button>`}
+          </div>
+        `;
+      }).join('');
+    } catch (err) {
+      list.innerHTML = '<p class="error">Could not load itineraries: ' + err + '</p>';
+    }
+  }
+
+  // After a successful booking anywhere in the app, refresh this list if we're on this page.
+  document.addEventListener('gt:itinerary-created', loadItineraries);
+
+  loadItineraries();
+</script>
+{% endblock %}
