@@ -51,6 +51,7 @@
       if (bounds.length) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
       grid.innerHTML = data.map(d => `
         <div class="card">
+          <img class="place-image" src="${d.image_url}" alt="${d.name}" loading="lazy">
           <div class="card-header">
             <h3>${d.name}</h3>
             <span class="category-badge category-${d.category}">${d.category}</span>
@@ -59,7 +60,7 @@
           <p>${d.description}</p>
           <div class="tags">${d.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
           <p class="popularity">⭐ ${d.rating} (${d.rating_count} ratings)</p>
-          <button onclick="openBookModal(${d.id}, '${d.name.replace(/'/g, "\\'")}')">Plan itinerary</button>
+          <button onclick="openBookModal(${d.id}, '${d.name.replace(/'/g, "\\'")}', ${d.lat}, ${d.lng})">Plan itinerary</button>
         </div>
       `).join('');
     } catch (err) {

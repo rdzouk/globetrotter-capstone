@@ -10,6 +10,41 @@
   --success: #1e7a34;
 }
 
+[data-theme="dark"] {
+  --brand: #35a3a3;
+  --brand-dark: #237a7a;
+  --bg: #14181a;
+  --card-bg: #1e2427;
+  --text: #eaeaea;
+  --muted: #9aa0a3;
+  --border: #333a3d;
+  --error: #ff6b6b;
+  --success: #4fd67a;
+}
+
+[data-theme="dark"] body { background: var(--bg); color: var(--text); }
+[data-theme="dark"] select,
+[data-theme="dark"] input,
+[data-theme="dark"] textarea {
+  background: var(--card-bg);
+  color: var(--text);
+  border-color: var(--border);
+}
+[data-theme="dark"] .modal-box { background: var(--card-bg); color: var(--text); }
+[data-theme="dark"] .tag { background: #234040; color: #bfe6e6; }
+[data-theme="dark"] .review-block { background: #23292c; }
+
+.icon-btn {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.4);
+  color: white;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.icon-btn:hover { background: rgba(255,255,255,0.15); }
+
 * { box-sizing: border-box; }
 
 body {
@@ -155,6 +190,8 @@ button.secondary:hover { background: #7c7c79; }
 .category-nightlife { background: #d35400; }
 .category-hotel { background: #16a085; }
 .category-attraction { background: #27ae60; }
+.category-entertainment { background: #f39c12; }
+.category-landmark { background: #34495e; }
 
 .identifier-toggle {
   display: flex;
@@ -186,6 +223,88 @@ button.secondary:hover { background: #7c7c79; }
   border-radius: 8px;
   padding: 8px 10px;
   margin-top: 4px;
+}
+
+.transport-estimate { margin: 6px 0 10px; }
+.transport-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 4px;
+}
+.transport-option {
+  background: #f0f0ee;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 0.8rem;
+}
+[data-theme="dark"] .transport-option { background: #23292c; }
+
+.locate-btn {
+  position: absolute;
+  z-index: 500;
+  top: 10px;
+  right: 10px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+[data-theme="dark"] .locate-btn { background: var(--card-bg); color: var(--text); }
+
+.map-wrapper { position: relative; }
+
+.place-image {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.nearby-section, .area-info {
+  background: #f0f0ee;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 10px;
+  font-size: 0.85rem;
+}
+[data-theme="dark"] .nearby-section, [data-theme="dark"] .area-info { background: #23292c; }
+
+.timetable-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  overflow-x: auto;
+}
+.timetable-day {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  min-width: 140px;
+}
+.timetable-day-header {
+  font-weight: 700;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.timetable-item {
+  background: #f0f0ee;
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+}
+[data-theme="dark"] .timetable-item { background: #23292c; }
+.timetable-empty { padding: 6px 0; font-size: 0.8rem; }
+
+@media (max-width: 900px) {
+  .timetable-grid { grid-template-columns: repeat(7, 220px); }
 }
 
 .form-card {

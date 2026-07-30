@@ -9,7 +9,7 @@ failure at the file and at the process.
 
 This is now a PURE JSON API — no HTML pages are served here. Any
 client (the frontend/ web pages, a Flutter app, curl, Postman) talks
-to it over HTTP. CORS is enabled so browser-based frontend running
+to it over HTTP. CORS is enabled so browser-based frontends running
 on a different origin/port can call it directly.
 
 Run:
@@ -178,6 +178,8 @@ def create_itinerary():
         "start_date": body["start_date"],
         "end_date": body["end_date"],
         "notes": body.get("notes", ""),
+        "time_slot": body.get("time_slot", ""),  # e.g. "09:00-11:00" — used by the weekly planner view
+        "transport_mode": body.get("transport_mode", ""),  # e.g. "taxi", "moto", "yango"
         "shared_with": body.get("shared_with", []),
         "visited": False,
         "review": None,
@@ -257,6 +259,41 @@ def submit_feedback():
     }
     saved = db.add_feedback(feedback)
     return jsonify(saved), 201
+
+
+# ---------------------------------------------------------------------
+# GET /destinations/<id>/nearby
+# Other places within walking/short-drive distance — powers the
+# "places nearby" section on the place detail page.
+# ---------------------------------------------------------------------
+@app.route("/destinations/<int:destination_id>/nearby", methods=["GET"])
+def nearby_destinations(destination_id):
+    origin = db.get_destination_by_id(destination_id)
+    if not origin:
+        return jsonify({"error": "destination not found"}), 404
+    limit = request.args.get("limit", default=5, type=int)
+    max_km = request.args.get("max_km", default=3.0, type=float)
+    results = logic.nearby_destinations(db.get_destinations(), origin, limit=limit, max_km=max_km)
+    return jsonify(results), 200
+
+
+# ---------------------------------------------------------------------
+# GET /neighborhoods/<name>
+# A short "good to know" blurb about an area, plus which neighborhoods
+# are nearby and how many places we have listed there.
+# ---------------------------------------------------------------------
+@app.route("/neighborhoods/<name>", methods=["GET"])
+def neighborhood_info(name):
+    info = logic.NEIGHBORHOOD_INFO.get(name)
+    if not info:
+        return jsonify({"error": "unknown neighborhood"}), 404
+    place_count = len([d for d in db.get_destinations() if d["neighborhood"] == name])
+    return jsonify({
+        "neighborhood": name,
+        "blurb": info["blurb"],
+        "nearby_neighborhoods": info["nearby"],
+        "place_count": place_count,
+    }), 200
 
 
 # ---------------------------------------------------------------------

@@ -91,6 +91,27 @@ mobile/
 └── pubspec.yaml
 ```
 
+## Feature parity with the web app
+
+The web frontend (`../frontend/`) got a large feature update — live
+geolocation + route lines, transport fare estimates, French/English +
+dark/light toggles, a weekly timetable planner, and a "nearby places" /
+area-info panel. I kept this Flutter app's data model in sync (it now
+reads `image_url` and the new `entertainment`/`landmark` categories
+without breaking), but **did not port the newer interactive features
+into Dart yet** — that's a lot of native-map and native-geolocation
+work I'd want to do carefully and iteratively with you, ideally with
+you able to `flutter run` and check each piece as it lands, rather
+than shipping a large untested batch. Still to port to mobile:
+- Live location marker + route line on the Explore map
+- Transport mode estimates
+- Nearby-places section on place detail
+- Area info ("good to know about this neighborhood")
+- Weekly timetable/planner screen
+- Language toggle (EN/FR) — dark mode is already done
+
+Say the word and I'll pick these up one at a time.
+
 ## Known limitation
 
 I wrote and reviewed all of this Dart code carefully, but couldn't

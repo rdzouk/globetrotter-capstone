@@ -1,7 +1,7 @@
 class Place {
   final int id;
   final String name;
-  final String category; // restaurant | sports | spa | nightlife | hotel | attraction
+  final String category; // restaurant | sports | spa | nightlife | hotel | attraction | entertainment | landmark
   final String neighborhood;
   final String address;
   final double lat;
@@ -12,6 +12,7 @@ class Place {
   final String? phone;
   final List<String> tags;
   final String description;
+  final String? imageUrl;
 
   Place({
     required this.id,
@@ -27,6 +28,7 @@ class Place {
     required this.phone,
     required this.tags,
     required this.description,
+    this.imageUrl,
   });
 
   factory Place.fromJson(Map<String, dynamic> json) {
@@ -44,6 +46,7 @@ class Place {
       phone: json['phone'],
       tags: List<String>.from(json['tags'] ?? []),
       description: json['description'] ?? '',
+      imageUrl: json['image_url'],
     );
   }
 }

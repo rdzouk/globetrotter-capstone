@@ -29,6 +29,18 @@ class PlaceCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (place.imageUrl != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    place.imageUrl!,
+                    height: 120,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stack) => const SizedBox.shrink(),
+                  ),
+                ),
+              if (place.imageUrl != null) const SizedBox(height: 8),
               Row(
                 children: [
                   Expanded(

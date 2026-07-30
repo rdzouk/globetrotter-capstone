@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Planner — GlobeTrotter{% endblock %}
+{% block content %}
+  <h1>Weekly planner</h1>
+  <p class="muted">Your itineraries laid out like a timetable. Pick a week to view, or see everything.</p>
+
+  <div class="search-bar">
+    <label style="align-self:center;">Week starting</label>
+    <input type="date" id="week-start">
+    <button id="show-week-btn">Show this week</button>
+    <button class="secondary" id="show-all-btn">Show all itineraries</button>
+  </div>
+
+  <div id="timetable-wrapper">
+    <p class="muted">Loading...</p>
+  </div>
+{% endblock %}
+{% block scripts %}
+<script>
+  const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  function mondayOf(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    const day = (d.getDay() + 6) % 7; // 0 = Monday
+    d.setDate(d.getDate() - day);
+    return d;
+  }
+
+  function fmtDate(d) {
+    return d.toISOString().slice(0, 10);
+  }
+
+  async function loadTimetable(weekStartDate) {
+    const wrapper = document.getElementById('timetable-wrapper');
+    const token = localStorage.getItem('gt_token');
+    if (!token) {
+      wrapper.innerHTML = '<p class="muted">Please <a href="{{ url_for("page_login") }}">log in</a> to see your planner.</p>';
+      return;
+    }
+    wrapper.innerHTML = '<p class="muted">Loading...</p>';
+    try {
+      const [itinRes, destRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/itineraries`, { headers: { 'Authorization': 'Bearer ' + token } }),
+        fetch(`${API_BASE_URL}/destinations`)
+      ]);
+      let itineraries = await itinRes.json();
+      const destinations = await destRes.json();
+      const byId = Object.fromEntries(destinations.map(d => [d.id, d]));
+
+      let days;
+      if (weekStartDate) {
+        days = [];
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(weekStartDate);
+          d.setDate(d.getDate() + i);
+          days.push(fmtDate(d));
+        }
+        itineraries = itineraries.filter(it => days.includes(it.start_date));
+      }
+
+      if (!itineraries.length) {
+        wrapper.innerHTML = '<p class="muted">No itineraries in this range. Go to <a href="{{ url_for("page_home") }}">Destinations</a> and plan one — you can set a time slot when booking.</p>';
+        return;
+      }
+
+      // Group by date.
+      const byDate = {};
+      itineraries.forEach(it => {
+        byDate[it.start_date] = byDate[it.start_date] || [];
+        byDate[it.start_date].push(it);
+      });
+      const dates = (days || Object.keys(byDate).sort());
+
+      wrapper.innerHTML = `
+        <div class="timetable-grid">
+          ${dates.map(date => {
+            const items = (byDate[date] || []).sort((a, b) => (a.time_slot || '').localeCompare(b.time_slot || ''));
+            const dayLabel = DAY_NAMES[(new Date(date + 'T00:00:00').getDay() + 6) % 7];
+            return `
+              <div class="timetable-day">
+                <div class="timetable-day-header">${dayLabel}<br><span class="muted">${date}</span></div>
+                ${items.length ? items.map(it => {
+                  const dest = byId[it.destination_id];
+                  const transportIcon = { taxi: '🚕', moto: '🏍️', yango: '📱', own: '🚗' }[it.transport_mode] || '';
+                  return `
+                    <div class="timetable-item">
+                      <strong>${dest ? dest.name : 'Place #' + it.destination_id}</strong>
+                      ${it.time_slot ? `<div class="muted">${it.time_slot}</div>` : ''}
+                      ${transportIcon ? `<div>${transportIcon} ${it.transport_mode}</div>` : ''}
+                      ${it.visited ? '<span class="category-badge" style="background:#27ae60;">Visited</span>' : ''}
+                    </div>
+                  `;
+                }).join('') : '<div class="muted timetable-empty">—</div>'}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    } catch (err) {
+      wrapper.innerHTML = '<p class="error">Could not load planner: ' + err + '</p>';
+    }
+  }
+
+  document.getElementById('show-week-btn').addEventListener('click', () => {
+    const input = document.getElementById('week-start').value;
+    if (!input) { alert('Pick a date first.'); return; }
+    loadTimetable(mondayOf(input));
+  });
+  document.getElementById('show-all-btn').addEventListener('click', () => loadTimetable(null));
+
+  // Default: current week.
+  document.getElementById('week-start').valueAsDate = new Date();
+  loadTimetable(mondayOf(fmtDate(new Date())));
+</script>
+{% endblock %}

@@ -102,7 +102,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: _category,
+                        initialValue: _category,
                         isExpanded: true,
                         decoration: const InputDecoration(labelText: 'Category', isDense: true),
                         items: [
@@ -118,7 +118,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: _neighborhood,
+                        initialValue: _neighborhood,
                         isExpanded: true,
                         decoration: const InputDecoration(labelText: 'Neighborhood', isDense: true),
                         items: [

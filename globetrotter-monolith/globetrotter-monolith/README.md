@@ -27,12 +27,34 @@ Python.
   review on that place's page (`GET /destinations/<id>/reviews`).
 - **App feedback**: a separate channel (`POST`/`GET /feedback`) for
   comments and critiques about the app itself, not about a place.
-- **Light/dark mode**: implemented client-side in the Flutter app
-  (Settings tab) and persisted on-device — this needs no backend
-  support since it's purely a rendering choice.
+- **Light/dark mode**: toggle in the nav bar on every web page, and
+  in the Flutter app's Settings tab — persisted per-device.
+- **English/French**: language toggle in the web nav bar (persisted).
+- **58 places** now, including Canal Olympia (Yaoundé's main cinema —
+  what people often call "the Majestic"), the Cathedral of Our Lady of
+  Victories, PlaYce mall in Warda, Star Land Hotel Bastos, and Djeuga
+  Palace — plus two new categories, `entertainment` and `landmark`.
+- **Live location + route line**: "Show my location (live)" on the
+  Explore map uses `watchPosition` to keep a blue dot updating as you
+  move, and "Route from me" draws a straight line + distance to any
+  place.
+- **Transport estimates**: picking taxi / moto-taxi / Yango / own
+  vehicle when booking an itinerary shows a rough fare + time
+  estimate based on straight-line distance. **These are formula-based
+  estimates, not live pricing** from any ride-hailing API — labeled
+  as such in the UI.
+- **Nearby places**: every place card has a "Nearby places" button
+  showing what else is within 3km (`GET /destinations/<id>/nearby`).
+- **Area info**: selecting a neighborhood filter shows a "good to
+  know" blurb about that area plus which neighborhoods are close by
+  (`GET /neighborhoods/<name>`).
+- **Weekly planner**: a new Planner page lays your itineraries out as
+  a Monday–Sunday timetable, using an optional `time_slot` field you
+  can set when booking (e.g. "09:00–11:00").
 - **Flutter mobile app**: full client in `mobile/` — see its README
-  for setup, and note the backend URL you'll need to configure
-  depending on emulator vs. physical device.
+  for setup. Note: the newest features above (live location, transport
+  estimates, nearby places, area info, planner, language toggle) are
+  currently web-only — see `mobile/README.md` for the parity checklist.
 
 ## Quick start (backend)
 
@@ -174,6 +196,26 @@ of it for your Phase 2 write-up. If you need your seed data back,
 re-run the seeding snippet in `data.json`'s git history or regenerate
 it from the 12-destination list below.
 
+## Two honesty notes
+
+**Photos are placeholders, not real venue photos.** I pulled real
+names, addresses, coordinates, and ratings for every place, but I
+can't legally scrape and re-host actual Google Photos of these
+businesses in an app — that's outside what their licensing allows.
+Each place has a stable placeholder image (`image_url`, from Lorem
+Picsum, seeded so it's consistent) so the UI has something to show.
+If you want real photos, the proper path is Google's Places Photos
+API with your own API key and billing — I can wire that in if you
+set one up.
+
+**No verbatim Google review text.** I gathered the real aggregate
+rating and rating count for every place (that's factual data, not
+copyrighted) but I didn't copy actual review sentences into the
+app — reproducing other people's review text isn't something I can
+do. What the app has instead is its own review system: any user who
+marks a place visited can leave a real star rating + comment, which
+shows up on that place's public reviews.
+
 ## API Reference
 
 ### `POST /register`
@@ -238,9 +280,23 @@ Optional `?limit=N` (default 5).
 
 ### `POST /itineraries` (auth required)
 ```json
-{ "destination_id": 3, "start_date": "2026-08-01", "end_date": "2026-08-07", "notes": "honeymoon" }
+{ "destination_id": 3, "start_date": "2026-08-01", "end_date": "2026-08-07",
+  "time_slot": "09:00-11:00", "transport_mode": "taxi", "notes": "honeymoon" }
 ```
+`time_slot` and `transport_mode` are both optional free-text fields —
+`time_slot` powers the weekly Planner page, `transport_mode` is one of
+`taxi` / `moto` / `yango` / `own` and just gets stored + redisplayed
+(the fare estimate itself is computed client-side, not stored).
 Validates that `destination_id` exists and `end_date >= start_date`.
+
+### `GET /destinations/<id>/nearby`
+Public. Other places within a radius (default 3km, override with
+`?max_km=`), closest first, each with a `distance_km`. Optional
+`?limit=N` (default 5).
+
+### `GET /neighborhoods/<name>`
+Public. A short "good to know" blurb about that area, which
+neighborhoods are nearby, and how many places are listed there.
 
 ### `GET /itineraries` (auth required)
 Returns only the authenticated user's itineraries.

@@ -5,7 +5,7 @@
 {% endblock %}
 {% block content %}
   <h1>Explore Yaoundé</h1>
-  <p class="muted">Real restaurants, sport complexes, spas, hotels and attractions across the city — Bastos, Hippodrome, Nlongkak, Centre-ville and more.</p>
+  <p class="muted">Real restaurants, sport complexes, spas, hotels, cinemas, landmarks and more — Bastos, Hippodrome, Nlongkak, Centre-ville and beyond.</p>
 
   <form id="search-form" class="search-bar">
     <input type="text" id="q" placeholder="Search by name, neighborhood, description...">
@@ -17,6 +17,8 @@
       <option value="nightlife">Nightlife</option>
       <option value="hotel">Hotels</option>
       <option value="attraction">Attractions &amp; parks</option>
+      <option value="entertainment">Entertainment &amp; cinema</option>
+      <option value="landmark">Landmarks</option>
     </select>
     <select id="neighborhood">
       <option value="">Any neighborhood</option>
@@ -37,6 +39,7 @@
       <option value="Nsimalen">Nsimalen</option>
       <option value="Olembe">Olembe</option>
       <option value="Soa">Soa</option>
+      <option value="Ngoa-Ekelle">Ngoa-Ekelle</option>
     </select>
     <select id="tag">
       <option value="">Any vibe</option>
@@ -50,7 +53,13 @@
     <button type="submit">Search</button>
   </form>
 
-  <div id="map" class="map-view"></div>
+  <div id="area-info" class="area-info hidden"></div>
+
+  <div class="map-wrapper">
+    <button id="locate-btn" class="locate-btn">📍 Show my location (live)</button>
+    <div id="map" class="map-view"></div>
+  </div>
+  <p id="route-info" class="muted" style="margin-top:6px;"></p>
 
   <div id="destinations-grid" class="card-grid">
     <p class="muted">Loading places...</p>
@@ -67,15 +76,13 @@
   }).addTo(map);
 
   const categoryColors = {
-    restaurant: '#c0392b',
-    sports: '#2980b9',
-    spa: '#8e44ad',
-    nightlife: '#d35400',
-    hotel: '#16a085',
-    attraction: '#27ae60'
+    restaurant: '#c0392b', sports: '#2980b9', spa: '#8e44ad', nightlife: '#d35400',
+    hotel: '#16a085', attraction: '#27ae60', entertainment: '#f39c12', landmark: '#34495e'
   };
 
   let markers = [];
+  let userMarker = null;
+  let routeLine = null;
 
   function clearMarkers() {
     markers.forEach(m => map.removeLayer(m));
@@ -89,22 +96,92 @@
     places.forEach(d => {
       const color = categoryColors[d.category] || '#555';
       const marker = L.circleMarker([d.lat, d.lng], {
-        radius: 8,
-        fillColor: color,
-        color: '#fff',
-        weight: 2,
-        fillOpacity: 0.9
+        radius: 8, fillColor: color, color: '#fff', weight: 2, fillOpacity: 0.9
       }).addTo(map);
       marker.bindPopup(`
         <strong>${d.name}</strong><br>
         ${d.category} · ${d.neighborhood}<br>
         ⭐ ${d.rating} (${d.rating_count} ratings)<br>
-        <button onclick="openBookModal(${d.id}, '${d.name.replace(/'/g, "\\'")}')">Plan itinerary</button>
+        <button onclick="openBookModal(${d.id}, '${d.name.replace(/'/g, "\\'")}', ${d.lat}, ${d.lng})">Plan itinerary</button>
+        <button onclick="drawRouteTo(${d.lat}, ${d.lng}, '${d.name.replace(/'/g, "\\'")}')">Route from me</button>
       `);
       markers.push(marker);
       bounds.push([d.lat, d.lng]);
     });
     if (bounds.length) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+  }
+
+  // ---- Live location + route line (uses shared helpers from app.js) ----
+  document.getElementById('locate-btn').addEventListener('click', () => {
+    gtStartLiveLocation((loc) => {
+      if (userMarker) map.removeLayer(userMarker);
+      userMarker = L.marker([loc.lat, loc.lng], {
+        icon: L.divIcon({ className: '', html: '<div style="background:#1a73e8;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 0 4px rgba(0,0,0,0.4);"></div>' })
+      }).addTo(map).bindPopup('You are here (live)');
+      document.getElementById('locate-btn').textContent = '📍 Live location on';
+      updateTransportEstimate();
+    });
+  });
+
+  function drawRouteTo(lat, lng, name) {
+    if (!gtUserLocation) {
+      alert('Turn on "Show my location" first.');
+      return;
+    }
+    if (routeLine) map.removeLayer(routeLine);
+    routeLine = L.polyline([[gtUserLocation.lat, gtUserLocation.lng], [lat, lng]], {
+      color: '#1a6b6b', weight: 3, dashArray: '6 6'
+    }).addTo(map);
+    map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
+    const distanceKm = gtHaversineKm(gtUserLocation.lat, gtUserLocation.lng, lat, lng);
+    document.getElementById('route-info').textContent =
+      `Straight-line distance to ${name}: ~${distanceKm.toFixed(1)} km`;
+  }
+
+  // ---- Area info panel ----
+  async function loadAreaInfo(neighborhood) {
+    const el = document.getElementById('area-info');
+    if (!neighborhood) {
+      el.classList.add('hidden');
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE_URL}/neighborhoods/${encodeURIComponent(neighborhood)}`);
+      if (!res.ok) { el.classList.add('hidden'); return; }
+      const info = await res.json();
+      el.innerHTML = `
+        <strong>Good to know about ${info.neighborhood}:</strong> ${info.blurb}
+        ${info.nearby_neighborhoods.length ? `<br><span class="muted">Nearby areas: ${info.nearby_neighborhoods.join(', ')}</span>` : ''}
+        <br><span class="muted">${info.place_count} place(s) listed here.</span>
+      `;
+      el.classList.remove('hidden');
+    } catch (err) {
+      el.classList.add('hidden');
+    }
+  }
+
+  // ---- Nearby places (expand-in-place on a card) ----
+  async function toggleNearby(destinationId, btn) {
+    const container = document.getElementById(`nearby-${destinationId}`);
+    if (!container.classList.contains('hidden')) {
+      container.classList.add('hidden');
+      return;
+    }
+    container.classList.remove('hidden');
+    container.innerHTML = '<span class="muted">Loading nearby places...</span>';
+    try {
+      const res = await fetch(`${API_BASE_URL}/destinations/${destinationId}/nearby?limit=4`);
+      const nearby = await res.json();
+      if (!nearby.length) {
+        container.innerHTML = '<span class="muted">Nothing else listed within 3km.</span>';
+        return;
+      }
+      container.innerHTML = '<strong>Nearby:</strong><br>' + nearby.map(n =>
+        `${n.name} <span class="muted">(${n.distance_km} km, ${n.category})</span>`
+      ).join('<br>');
+    } catch (err) {
+      container.innerHTML = '<span class="error">Could not load nearby places.</span>';
+    }
   }
 
   async function loadDestinations() {
@@ -117,6 +194,8 @@
     if (category) params.set('category', category);
     if (neighborhood) params.set('neighborhood', neighborhood);
     if (tag) params.set('tag', tag);
+
+    loadAreaInfo(neighborhood);
 
     const grid = document.getElementById('destinations-grid');
     grid.innerHTML = '<p class="muted">Loading...</p>';
@@ -139,6 +218,7 @@
     const stars = '⭐'.repeat(Math.round(d.rating));
     return `
       <div class="card">
+        <img class="place-image" src="${d.image_url}" alt="${d.name}" loading="lazy">
         <div class="card-header">
           <h3>${d.name}</h3>
           <span class="category-badge category-${d.category}">${d.category}</span>
@@ -147,8 +227,12 @@
         <p>${d.description}</p>
         <div class="tags">${d.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
         <p class="popularity">${stars} ${d.rating} (${d.rating_count} ratings)</p>
-        <button onclick="focusOnMap(${d.lat}, ${d.lng}); openBookModal(${d.id}, '${d.name.replace(/'/g, "\\'")}')">Plan itinerary</button>
-        <button class="secondary" onclick="focusOnMap(${d.lat}, ${d.lng})">Show on map</button>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button onclick="focusOnMap(${d.lat}, ${d.lng}); openBookModal(${d.id}, '${d.name.replace(/'/g, "\\'")}', ${d.lat}, ${d.lng})">Plan itinerary</button>
+          <button class="secondary" onclick="focusOnMap(${d.lat}, ${d.lng})">Show on map</button>
+          <button class="secondary" onclick="toggleNearby(${d.id}, this)">Nearby places</button>
+        </div>
+        <div id="nearby-${d.id}" class="nearby-section hidden"></div>
       </div>
     `;
   }

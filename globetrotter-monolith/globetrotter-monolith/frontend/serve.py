@@ -47,6 +47,11 @@ def page_itineraries():
     return render_template("itineraries.html")
 
 
+@app.route("/planner-page")
+def page_planner():
+    return render_template("planner.html")
+
+
 @app.route("/feedback-page")
 def page_feedback():
     return render_template("feedback.html")

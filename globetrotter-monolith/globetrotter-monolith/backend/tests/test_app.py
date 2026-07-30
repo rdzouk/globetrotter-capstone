@@ -289,3 +289,34 @@ def test_submit_feedback_empty_message_rejected(client):
     headers = auth_header(client)
     resp = client.post("/feedback", headers=headers, json={"message": ""})
     assert resp.status_code == 400
+
+
+# ---- Nearby places + neighborhood info ----
+
+def test_nearby_destinations(client):
+    # Tassa (id 1) and Shu Anta Nlongkak (id 2) are ~1km apart in the baseline data.
+    resp = client.get("/destinations/1/nearby?max_km=5")
+    assert resp.status_code == 200
+    nearby = resp.get_json()
+    assert len(nearby) == 1
+    assert nearby[0]["name"] == "Shu Anta Nlongkak"
+    assert "distance_km" in nearby[0]
+
+
+def test_nearby_destinations_unknown_id(client):
+    resp = client.get("/destinations/999/nearby")
+    assert resp.status_code == 404
+
+
+def test_neighborhood_info(client):
+    resp = client.get("/neighborhoods/Bastos")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["neighborhood"] == "Bastos"
+    assert "blurb" in body
+    assert body["place_count"] == 1  # Tassa, in the baseline data
+
+
+def test_neighborhood_info_unknown(client):
+    resp = client.get("/neighborhoods/Nowhereville")
+    assert resp.status_code == 404

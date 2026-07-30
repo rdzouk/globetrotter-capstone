@@ -149,6 +149,8 @@
             </div>
             <p class="muted">${dest ? dest.neighborhood + ' · ' + dest.category : ''}</p>
             <p>${it.start_date} → ${it.end_date}</p>
+            ${it.time_slot ? `<p class="muted">🕐 ${it.time_slot}</p>` : ''}
+            ${it.transport_mode ? `<p class="muted">${({taxi:'🚕',moto:'🏍️',yango:'📱',own:'🚗'})[it.transport_mode] || ''} ${it.transport_mode}</p>` : ''}
             ${it.notes ? `<p class="muted">${it.notes}</p>` : ''}
             ${it.review ? `
               <div class="review-block">
