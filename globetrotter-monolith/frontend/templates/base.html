@@ -12,10 +12,13 @@
     <a href="{{ url_for('page_home') }}" class="brand">🌍 GlobeTrotter</a>
     <div class="nav-links">
       <a href="{{ url_for('page_home') }}" data-i18n="nav_destinations">Destinations</a>
+      <a href="{{ url_for('page_map') }}" data-i18n="nav_map">Map</a>
       <a href="{{ url_for('page_recommendations') }}" data-i18n="nav_recommendations">Recommendations</a>
+      <a href="{{ url_for('page_favorites') }}" data-i18n="nav_favorites">Favorites</a>
       <a href="{{ url_for('page_itineraries') }}" data-i18n="nav_itineraries">My Itineraries</a>
       <a href="{{ url_for('page_planner') }}" data-i18n="nav_planner">Planner</a>
       <a href="{{ url_for('page_feedback') }}" data-i18n="nav_feedback">Feedback</a>
+      <a href="{{ url_for('page_profile') }}" data-i18n="nav_profile">Profile</a>
       <button id="lang-toggle" class="icon-btn" title="Switch language">EN</button>
       <button id="theme-toggle" class="icon-btn" title="Toggle dark mode">🌙</button>
       <span id="nav-auth"></span>

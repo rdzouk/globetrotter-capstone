@@ -124,6 +124,17 @@ def validate_review_payload(payload):
     return errors
 
 
+def validate_profile_update(payload):
+    """Only name and preferences are editable — email/phone stay fixed
+    as the account identifier to avoid re-triggering uniqueness checks."""
+    errors = []
+    if "name" in payload and not payload["name"].strip():
+        errors.append("name cannot be empty")
+    if "preferences" in payload and not isinstance(payload["preferences"], list):
+        errors.append("preferences must be a list of tags")
+    return errors
+
+
 def validate_feedback_payload(payload):
     errors = []
     message = payload.get("message")

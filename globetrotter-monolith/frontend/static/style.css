@@ -378,3 +378,115 @@ button.secondary:hover { background: #7c7c79; }
   gap: 10px;
   margin-top: 18px;
 }
+
+/* ---- Heart / favorites ---- */
+.heart-btn {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  width: 34px;
+  height: 34px;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.heart-btn.filled { border-color: #e0245e; }
+[data-theme="dark"] .heart-btn { background: var(--card-bg); }
+
+.card-image-wrapper { position: relative; }
+.card-image-wrapper .heart-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+}
+
+/* ---- Page header row (title + action button) ---- */
+.page-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.map-link-btn {
+  background: var(--brand);
+  color: white;
+  padding: 10px 16px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+.map-link-btn:hover { background: var(--brand-dark); }
+
+.secondary-link-btn {
+  background: #9a9a97;
+  color: white;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  text-decoration: none;
+  display: inline-block;
+}
+.secondary-link-btn:hover { background: #7c7c79; }
+
+.tag-clickable { cursor: pointer; }
+.tag-clickable:hover { background: var(--brand); color: white; }
+
+/* ---- Dedicated map page ---- */
+.map-page-layout {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+}
+.map-view-full {
+  flex: 1;
+  height: 620px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  position: relative;
+}
+.map-sidebar {
+  width: 360px;
+  flex-shrink: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  overflow-y: auto;
+  max-height: 620px;
+}
+.map-sidebar h2 { margin: 6px 0 4px; font-size: 1.2rem; }
+.map-hover-tooltip {
+  position: absolute;
+  z-index: 10;
+  background: white;
+  color: #222;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  max-width: 220px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  pointer-events: none;
+}
+[data-theme="dark"] .map-hover-tooltip { background: #2a3134; color: var(--text); }
+
+@media (max-width: 900px) {
+  .map-page-layout { flex-direction: column; }
+  .map-sidebar { width: 100%; max-height: none; }
+  .map-view-full { height: 400px; }
+}
+
+/* ---- Login hero banner ---- */
+.hero-banner {
+  max-width: 700px;
+  margin: 0 auto 20px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}

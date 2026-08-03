@@ -305,5 +305,77 @@ def list_feedback():
     return jsonify(db.get_feedback()), 200
 
 
+# ---------------------------------------------------------------------
+# GET /profile  (auth required)
+# ---------------------------------------------------------------------
+@app.route("/profile", methods=["GET"])
+@require_auth
+def get_profile():
+    user = db.get_user_by_id(request.user_id)
+    if not user:
+        return jsonify({"error": "user not found"}), 404
+    return jsonify({
+        "id": user["id"], "name": user["name"], "email": user["email"],
+        "phone": user["phone"], "preferences": user["preferences"],
+    }), 200
+
+
+# ---------------------------------------------------------------------
+# PATCH /profile  (auth required)
+# Only name and preferences (interest tags) are editable — email/phone
+# stay fixed since they're the account identifier.
+# ---------------------------------------------------------------------
+@app.route("/profile", methods=["PATCH"])
+@require_auth
+def update_profile():
+    body = request.get_json(silent=True) or {}
+    errors = logic.validate_profile_update(body)
+    if errors:
+        return jsonify({"errors": errors}), 400
+
+    updates = {}
+    if "name" in body:
+        updates["name"] = body["name"].strip()
+    if "preferences" in body:
+        updates["preferences"] = body["preferences"]
+
+    updated = db.update_user(request.user_id, updates)
+    return jsonify({
+        "id": updated["id"], "name": updated["name"], "email": updated["email"],
+        "phone": updated["phone"], "preferences": updated["preferences"],
+    }), 200
+
+
+# ---------------------------------------------------------------------
+# Favorites  (auth required) — heart a place, see your liked places.
+# ---------------------------------------------------------------------
+@app.route("/favorites", methods=["GET"])
+@require_auth
+def list_favorites():
+    ids = db.get_favorite_destination_ids(request.user_id)
+    places = [d for d in db.get_destinations() if d["id"] in ids]
+    return jsonify(places), 200
+
+
+@app.route("/favorites", methods=["POST"])
+@require_auth
+def add_favorite():
+    body = request.get_json(silent=True) or {}
+    destination_id = body.get("destination_id")
+    if not db.get_destination_by_id(destination_id):
+        return jsonify({"error": "destination not found"}), 404
+    favorite, created = db.add_favorite(request.user_id, destination_id)
+    return jsonify(favorite), 201 if created else 200
+
+
+@app.route("/favorites/<int:destination_id>", methods=["DELETE"])
+@require_auth
+def remove_favorite(destination_id):
+    removed = db.remove_favorite(request.user_id, destination_id)
+    if not removed:
+        return jsonify({"error": "not in favorites"}), 404
+    return jsonify({"removed": True}), 200
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

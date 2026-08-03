@@ -1,11 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Yaoundé Places — GlobeTrotter{% endblock %}
-{% block head_extra %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-{% endblock %}
 {% block content %}
-  <h1>Explore Yaoundé</h1>
-  <p class="muted">Real restaurants, sport complexes, spas, hotels, cinemas, landmarks and more — Bastos, Hippodrome, Nlongkak, Centre-ville and beyond.</p>
+  <div class="page-header-row">
+    <div>
+      <h1>Explore Yaoundé</h1>
+      <p class="muted">Real restaurants, sport complexes, spas, hotels, cinemas, landmarks and more.</p>
+    </div>
+    <a href="{{ url_for('page_map') }}" class="map-link-btn">🗺️ Open full interactive map</a>
+  </div>
 
   <form id="search-form" class="search-bar">
     <input type="text" id="q" placeholder="Search by name, neighborhood, description...">
@@ -55,96 +57,15 @@
 
   <div id="area-info" class="area-info hidden"></div>
 
-  <div class="map-wrapper">
-    <button id="locate-btn" class="locate-btn">📍 Show my location (live)</button>
-    <div id="map" class="map-view"></div>
-  </div>
-  <p id="route-info" class="muted" style="margin-top:6px;"></p>
-
   <div id="destinations-grid" class="card-grid">
     <p class="muted">Loading places...</p>
   </div>
 {% endblock %}
 {% block scripts %}
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
-  // Yaoundé city center
-  const map = L.map('map').setView([3.8667, 11.5167], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors',
-    maxZoom: 19
-  }).addTo(map);
-
-  const categoryColors = {
-    restaurant: '#c0392b', sports: '#2980b9', spa: '#8e44ad', nightlife: '#d35400',
-    hotel: '#16a085', attraction: '#27ae60', entertainment: '#f39c12', landmark: '#34495e'
-  };
-
-  let markers = [];
-  let userMarker = null;
-  let routeLine = null;
-
-  function clearMarkers() {
-    markers.forEach(m => map.removeLayer(m));
-    markers = [];
-  }
-
-  function plotMarkers(places) {
-    clearMarkers();
-    if (!places.length) return;
-    const bounds = [];
-    places.forEach(d => {
-      const color = categoryColors[d.category] || '#555';
-      const marker = L.circleMarker([d.lat, d.lng], {
-        radius: 8, fillColor: color, color: '#fff', weight: 2, fillOpacity: 0.9
-      }).addTo(map);
-      marker.bindPopup(`
-        <strong>${d.name}</strong><br>
-        ${d.category} · ${d.neighborhood}<br>
-        ⭐ ${d.rating} (${d.rating_count} ratings)<br>
-        <button onclick="openBookModal(${d.id}, '${d.name.replace(/'/g, "\\'")}', ${d.lat}, ${d.lng})">Plan itinerary</button>
-        <button onclick="drawRouteTo(${d.lat}, ${d.lng}, '${d.name.replace(/'/g, "\\'")}')">Route from me</button>
-      `);
-      markers.push(marker);
-      bounds.push([d.lat, d.lng]);
-    });
-    if (bounds.length) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
-  }
-
-  // ---- Live location + route line (uses shared helpers from app.js) ----
-  document.getElementById('locate-btn').addEventListener('click', () => {
-    gtStartLiveLocation((loc) => {
-      if (userMarker) map.removeLayer(userMarker);
-      userMarker = L.marker([loc.lat, loc.lng], {
-        icon: L.divIcon({ className: '', html: '<div style="background:#1a73e8;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 0 4px rgba(0,0,0,0.4);"></div>' })
-      }).addTo(map).bindPopup('You are here (live)');
-      document.getElementById('locate-btn').textContent = '📍 Live location on';
-      updateTransportEstimate();
-    });
-  });
-
-  function drawRouteTo(lat, lng, name) {
-    if (!gtUserLocation) {
-      alert('Turn on "Show my location" first.');
-      return;
-    }
-    if (routeLine) map.removeLayer(routeLine);
-    routeLine = L.polyline([[gtUserLocation.lat, gtUserLocation.lng], [lat, lng]], {
-      color: '#1a6b6b', weight: 3, dashArray: '6 6'
-    }).addTo(map);
-    map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
-    const distanceKm = gtHaversineKm(gtUserLocation.lat, gtUserLocation.lng, lat, lng);
-    document.getElementById('route-info').textContent =
-      `Straight-line distance to ${name}: ~${distanceKm.toFixed(1)} km`;
-  }
-
-  // ---- Area info panel ----
   async function loadAreaInfo(neighborhood) {
     const el = document.getElementById('area-info');
-    if (!neighborhood) {
-      el.classList.add('hidden');
-      return;
-    }
+    if (!neighborhood) { el.classList.add('hidden'); return; }
     try {
       const res = await fetch(`${API_BASE_URL}/neighborhoods/${encodeURIComponent(neighborhood)}`);
       if (!res.ok) { el.classList.add('hidden'); return; }
@@ -160,8 +81,7 @@
     }
   }
 
-  // ---- Nearby places (expand-in-place on a card) ----
-  async function toggleNearby(destinationId, btn) {
+  async function toggleNearby(destinationId) {
     const container = document.getElementById(`nearby-${destinationId}`);
     if (!container.classList.contains('hidden')) {
       container.classList.add('hidden');
@@ -184,6 +104,17 @@
     }
   }
 
+  function filterByTag(tag) {
+    document.getElementById('tag').value = tag;
+    loadDestinations();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function filterByCategory(category) {
+    document.getElementById('category').value = category;
+    loadDestinations();
+  }
+
   async function loadDestinations() {
     const q = document.getElementById('q').value;
     const category = document.getElementById('category').value;
@@ -203,7 +134,6 @@
     try {
       const res = await fetch(`${API_BASE_URL}/destinations?` + params.toString());
       const data = await res.json();
-      plotMarkers(data);
       if (!data.length) {
         grid.innerHTML = '<p class="muted">No places match that search.</p>';
         return;
@@ -218,27 +148,26 @@
     const stars = '⭐'.repeat(Math.round(d.rating));
     return `
       <div class="card">
-        <img class="place-image" src="${d.image_url}" alt="${d.name}" loading="lazy">
+        <div class="card-image-wrapper">
+          <img class="place-image" src="${d.image_url}" alt="${d.name}" loading="lazy">
+          ${gtHeartHtml(d.id)}
+        </div>
         <div class="card-header">
           <h3>${d.name}</h3>
-          <span class="category-badge category-${d.category}">${d.category}</span>
+          <span class="category-badge category-${d.category}" style="cursor:pointer" onclick="filterByCategory('${d.category}')" title="See all ${d.category}">${d.category}</span>
         </div>
         <p class="muted">${d.neighborhood} · ${d.address}</p>
         <p>${d.description}</p>
-        <div class="tags">${d.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
+        <div class="tags">${d.tags.map(t => `<span class="tag tag-clickable" onclick="filterByTag('${t}')" title="See all ${t}">${t}</span>`).join('')}</div>
         <p class="popularity">${stars} ${d.rating} (${d.rating_count} ratings)</p>
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
-          <button onclick="focusOnMap(${d.lat}, ${d.lng}); openBookModal(${d.id}, '${d.name.replace(/'/g, "\\'")}', ${d.lat}, ${d.lng})">Plan itinerary</button>
-          <button class="secondary" onclick="focusOnMap(${d.lat}, ${d.lng})">Show on map</button>
-          <button class="secondary" onclick="toggleNearby(${d.id}, this)">Nearby places</button>
+          <button onclick="openBookModal(${d.id}, '${d.name.replace(/'/g, "\\'")}', ${d.lat}, ${d.lng})">Plan itinerary</button>
+          <a class="secondary-link-btn" href="{{ url_for('page_map') }}?place=${d.id}">Show on map</a>
+          <button class="secondary" onclick="toggleNearby(${d.id})">Nearby places</button>
         </div>
         <div id="nearby-${d.id}" class="nearby-section hidden"></div>
       </div>
     `;
-  }
-
-  function focusOnMap(lat, lng) {
-    map.setView([lat, lng], 16);
   }
 
   document.getElementById('search-form').addEventListener('submit', (e) => {
@@ -246,6 +175,8 @@
     loadDestinations();
   });
 
-  loadDestinations();
+  document.addEventListener('DOMContentLoaded', () => {
+    gtLoadFavoriteIds().then(loadDestinations);
+  });
 </script>
 {% endblock %}

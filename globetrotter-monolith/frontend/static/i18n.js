@@ -6,10 +6,13 @@
 const GT_TRANSLATIONS = {
   en: {
     nav_destinations: 'Destinations',
+    nav_map: 'Map',
     nav_recommendations: 'Recommendations',
+    nav_favorites: 'Favorites',
     nav_itineraries: 'My Itineraries',
     nav_planner: 'Planner',
     nav_feedback: 'Feedback',
+    nav_profile: 'Profile',
     label_start_date: 'Start date',
     label_end_date: 'End date',
     label_time_slot: 'Time slot (optional)',
@@ -22,10 +25,13 @@ const GT_TRANSLATIONS = {
   },
   fr: {
     nav_destinations: 'Destinations',
+    nav_map: 'Carte',
     nav_recommendations: 'Recommandations',
+    nav_favorites: 'Favoris',
     nav_itineraries: 'Mes itinéraires',
     nav_planner: 'Planificateur',
     nav_feedback: 'Avis sur l\'appli',
+    nav_profile: 'Profil',
     label_start_date: 'Date de début',
     label_end_date: 'Date de fin',
     label_time_slot: 'Créneau horaire (optionnel)',

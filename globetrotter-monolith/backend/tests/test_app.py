@@ -320,3 +320,97 @@ def test_neighborhood_info(client):
 def test_neighborhood_info_unknown(client):
     resp = client.get("/neighborhoods/Nowhereville")
     assert resp.status_code == 404
+
+
+# ---- Profile ----
+
+def test_get_profile(client):
+    register(client, name="Alice", email="alice@example.com", preferences=["spa"])
+    headers = auth_header(client)
+    resp = client.get("/profile", headers=headers)
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["name"] == "Alice"
+    assert body["email"] == "alice@example.com"
+    assert body["preferences"] == ["spa"]
+
+
+def test_update_profile_name_and_preferences(client):
+    register(client, name="Alice")
+    headers = auth_header(client)
+    resp = client.patch("/profile", headers=headers, json={
+        "name": "Alice Updated", "preferences": ["restaurant", "fancy"],
+    })
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["name"] == "Alice Updated"
+    assert body["preferences"] == ["restaurant", "fancy"]
+    assert body["email"] == "alice@example.com"
+
+
+def test_update_profile_empty_name_rejected(client):
+    register(client)
+    headers = auth_header(client)
+    resp = client.patch("/profile", headers=headers, json={"name": "   "})
+    assert resp.status_code == 400
+
+
+def test_profile_requires_auth(client):
+    resp = client.get("/profile")
+    assert resp.status_code == 401
+
+
+# ---- Favorites ----
+
+def test_add_and_list_favorite(client):
+    register(client)
+    headers = auth_header(client)
+    resp = client.post("/favorites", headers=headers, json={"destination_id": 1})
+    assert resp.status_code == 201
+
+    resp = client.get("/favorites", headers=headers)
+    assert resp.status_code == 200
+    favs = resp.get_json()
+    assert len(favs) == 1
+    assert favs[0]["name"] == "Tassa"
+
+
+def test_add_favorite_idempotent(client):
+    register(client)
+    headers = auth_header(client)
+    client.post("/favorites", headers=headers, json={"destination_id": 1})
+    resp = client.post("/favorites", headers=headers, json={"destination_id": 1})
+    assert resp.status_code == 200
+
+    resp = client.get("/favorites", headers=headers)
+    assert len(resp.get_json()) == 1
+
+
+def test_add_favorite_unknown_destination(client):
+    register(client)
+    headers = auth_header(client)
+    resp = client.post("/favorites", headers=headers, json={"destination_id": 999})
+    assert resp.status_code == 404
+
+
+def test_remove_favorite(client):
+    register(client)
+    headers = auth_header(client)
+    client.post("/favorites", headers=headers, json={"destination_id": 1})
+    resp = client.delete("/favorites/1", headers=headers)
+    assert resp.status_code == 200
+
+    resp = client.get("/favorites", headers=headers)
+    assert resp.get_json() == []
+
+
+def test_remove_favorite_not_favorited(client):
+    register(client)
+    headers = auth_header(client)
+    resp = client.delete("/favorites/1", headers=headers)
+    assert resp.status_code == 404
+
+
+def test_favorites_require_auth(client):
+    resp = client.get("/favorites")
+    assert resp.status_code == 401

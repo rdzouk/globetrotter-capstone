@@ -79,6 +79,16 @@ def add_user(user):
     return user
 
 
+def update_user(user_id, updates):
+    data = load()
+    for u in data["users"]:
+        if u["id"] == user_id:
+            u.update(updates)
+            save(data)
+            return u
+    return None
+
+
 # ---- Destinations ----
 def get_destinations():
     return load()["destinations"]
@@ -153,3 +163,48 @@ def add_feedback(feedback):
     data["feedback"].append(feedback)
     save(data)
     return feedback
+
+
+# ---- Favorites ----
+def get_favorites():
+    return load().get("favorites", [])
+
+
+def get_favorite_destination_ids(user_id):
+    return {f["destination_id"] for f in get_favorites() if f["user_id"] == user_id}
+
+
+def is_favorited(user_id, destination_id):
+    return any(
+        f["user_id"] == user_id and f["destination_id"] == destination_id
+        for f in get_favorites()
+    )
+
+
+def add_favorite(user_id, destination_id):
+    data = load()
+    data.setdefault("favorites", [])
+    existing = next(
+        (f for f in data["favorites"] if f["user_id"] == user_id and f["destination_id"] == destination_id),
+        None,
+    )
+    if existing:
+        return existing, False
+    favorite = {"id": next_id(data["favorites"]), "user_id": user_id, "destination_id": destination_id}
+    data["favorites"].append(favorite)
+    save(data)
+    return favorite, True
+
+
+def remove_favorite(user_id, destination_id):
+    data = load()
+    data.setdefault("favorites", [])
+    before = len(data["favorites"])
+    data["favorites"] = [
+        f for f in data["favorites"]
+        if not (f["user_id"] == user_id and f["destination_id"] == destination_id)
+    ]
+    removed = len(data["favorites"]) < before
+    if removed:
+        save(data)
+    return removed

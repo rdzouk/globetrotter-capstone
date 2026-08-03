@@ -141,11 +141,13 @@
       list.innerHTML = itineraries.map(it => {
         const dest = byId[it.destination_id];
         const stars = (n) => '★'.repeat(Math.round(n)) + '☆'.repeat(5 - Math.round(n));
+        const passed = gtHasPassed(it.end_date);
         return `
           <div class="card">
             <div class="card-header">
               <h3>${dest ? dest.name : 'Place #' + it.destination_id}</h3>
-              ${it.visited ? '<span class="category-badge" style="background:#27ae60;">Visited</span>' : ''}
+              ${it.visited ? '<span class="category-badge" style="background:#27ae60;">Visited</span>' :
+                passed ? '<span class="category-badge" style="background:#9a9a97;">Period passed</span>' : ''}
             </div>
             <p class="muted">${dest ? dest.neighborhood + ' · ' + dest.category : ''}</p>
             <p>${it.start_date} → ${it.end_date}</p>
@@ -158,6 +160,9 @@
                 <span class="muted"> visited ${it.review.visited_date}</span>
                 ${it.review.comment ? `<p>${it.review.comment}</p>` : ''}
               </div>
+            ` : passed && dest ? `
+              <p class="muted" style="font-size:0.85rem;">This period has passed.</p>
+              <button onclick="openBookModal(${dest.id}, '${dest.name.replace(/'/g, "\\'")}', ${dest.lat}, ${dest.lng})">Book again</button>
             ` : `<button class="secondary" onclick="openReviewModal(${it.id})">Mark visited &amp; review</button>`}
           </div>
         `;

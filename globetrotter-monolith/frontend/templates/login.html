@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Log in — GlobeTrotter{% endblock %}
+{% block content %}
+  <div class="hero-banner">
+    <svg viewBox="0 0 800 220" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMax slice" style="width:100%; height:180px; border-radius:16px;">
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ff9a5c"/>
+          <stop offset="55%" stop-color="#ff7a6b"/>
+          <stop offset="100%" stop-color="#1a6b6b"/>
+        </linearGradient>
+        <linearGradient id="hillGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#237a7a"/>
+          <stop offset="100%" stop-color="#0f4a4a"/>
+        </linearGradient>
+      </defs>
+      <rect width="800" height="220" fill="url(#sky)"/>
+      <circle cx="650" cy="60" r="34" fill="#ffe1a8" opacity="0.9"/>
+
+      <!-- Rolling hills — Yaoundé is known as the "city of seven hills" -->
+      <path d="M0,150 Q100,110 220,140 T440,130 T660,145 T800,120 V220 H0 Z" fill="url(#hillGrad)" opacity="0.55"/>
+      <path d="M0,175 Q150,140 300,165 T600,160 T800,175 V220 H0 Z" fill="#0f4a4a" opacity="0.75"/>
+
+      <!-- Bastos: embassy-row building with a small dome -->
+      <g transform="translate(60,150)">
+        <rect x="0" y="20" width="70" height="50" fill="#fdf6ec"/>
+        <circle cx="35" cy="14" r="14" fill="#fdf6ec"/>
+        <rect x="10" y="35" width="12" height="18" fill="#1a6b6b"/>
+        <rect x="30" y="35" width="12" height="18" fill="#1a6b6b"/>
+        <rect x="50" y="35" width="12" height="18" fill="#1a6b6b"/>
+        <text x="35" y="86" font-size="11" fill="#fdf6ec" text-anchor="middle" font-family="sans-serif">Bastos</text>
+      </g>
+
+      <!-- Centre-ville: the Cathedral spire -->
+      <g transform="translate(230,120)">
+        <polygon points="20,0 40,80 0,80" fill="#fdf6ec"/>
+        <rect x="14" y="55" width="12" height="25" fill="#1a6b6b"/>
+        <line x1="20" y1="0" x2="20" y2="-16" stroke="#fdf6ec" stroke-width="2"/>
+        <text x="20" y="98" font-size="11" fill="#fdf6ec" text-anchor="middle" font-family="sans-serif">Centre-ville</text>
+      </g>
+
+      <!-- Warda: PlaYce mall block -->
+      <g transform="translate(380,145)">
+        <rect x="0" y="10" width="90" height="60" fill="#fdf6ec"/>
+        <rect x="8" y="20" width="18" height="14" fill="#ff7a6b"/>
+        <rect x="34" y="20" width="18" height="14" fill="#ff7a6b"/>
+        <rect x="60" y="20" width="18" height="14" fill="#ff7a6b"/>
+        <rect x="8" y="42" width="18" height="14" fill="#237a7a"/>
+        <rect x="34" y="42" width="18" height="14" fill="#237a7a"/>
+        <rect x="60" y="42" width="18" height="14" fill="#237a7a"/>
+        <text x="45" y="86" font-size="11" fill="#fdf6ec" text-anchor="middle" font-family="sans-serif">Warda</text>
+      </g>
+
+      <!-- Hippodrome: rounded tower -->
+      <g transform="translate(540,110)">
+        <rect x="10" y="0" width="40" height="95" rx="6" fill="#fdf6ec"/>
+        <rect x="18" y="14" width="10" height="12" fill="#1a6b6b"/>
+        <rect x="34" y="14" width="10" height="12" fill="#1a6b6b"/>
+        <rect x="18" y="34" width="10" height="12" fill="#1a6b6b"/>
+        <rect x="34" y="34" width="10" height="12" fill="#1a6b6b"/>
+        <rect x="18" y="54" width="10" height="12" fill="#1a6b6b"/>
+        <rect x="34" y="54" width="10" height="12" fill="#1a6b6b"/>
+        <text x="30" y="112" font-size="11" fill="#fdf6ec" text-anchor="middle" font-family="sans-serif">Hippodrome</text>
+      </g>
+
+      <!-- Nlongkak: low lounge/rooftop building -->
+      <g transform="translate(670,155)">
+        <rect x="0" y="20" width="60" height="40" fill="#fdf6ec"/>
+        <rect x="6" y="8" width="48" height="12" fill="#ff9a5c"/>
+        <text x="30" y="76" font-size="11" fill="#fdf6ec" text-anchor="middle" font-family="sans-serif">Nlongkak</text>
+      </g>
+    </svg>
+  </div>
+  <div class="form-card">
+    <h1>Log in</h1>
+    <form id="login-form">
+      <label>Log in with</label>
+      <div class="identifier-toggle">
+        <label><input type="radio" name="identifier-type" value="email" checked> Email</label>
+        <label><input type="radio" name="identifier-type" value="phone"> Phone number</label>
+      </div>
+      <input type="text" id="identifier" placeholder="you@example.com" required>
+
+      <label>Password</label>
+      <input type="password" id="password" required>
+
+      <button type="submit">Log in</button>
+      <p id="login-message"></p>
+    </form>
+    <p>New here? <a href="{{ url_for('page_register') }}">Create an account</a></p>
+  </div>
+{% endblock %}
+{% block scripts %}
+<script>
+  const identifierInput = document.getElementById('identifier');
+  document.querySelectorAll('input[name="identifier-type"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      const isEmail = document.querySelector('input[name="identifier-type"]:checked').value === 'email';
+      identifierInput.placeholder = isEmail ? 'you@example.com' : '+237 6XX XXX XXX';
+      identifierInput.type = isEmail ? 'email' : 'tel';
+      identifierInput.value = '';
+    });
+  });
+
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const password = document.getElementById('password').value;
+    const identifierType = document.querySelector('input[name="identifier-type"]:checked').value;
+    const identifierValue = document.getElementById('identifier').value;
+    const msg = document.getElementById('login-message');
+
+    const payload = { password };
+    if (identifierType === 'email') payload.email = identifierValue;
+    else payload.phone = identifierValue;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        msg.textContent = data.error || 'Login failed';
+        msg.className = 'error';
+        return;
+      }
+      localStorage.setItem('gt_token', data.token);
+      localStorage.setItem('gt_name', data.name);
+      window.location.href = "{{ url_for('page_home') }}";
+    } catch (err) {
+      msg.textContent = 'Network error: ' + err;
+      msg.className = 'error';
+    }
+  });
+</script>
+{% endblock %}

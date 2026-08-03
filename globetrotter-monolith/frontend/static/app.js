@@ -71,6 +71,70 @@ function gtEstimateTransport(distanceKm) {
   });
 }
 
+// ---- Favorites (heart icon state, shared across pages) ----
+let gtFavoriteIds = new Set();
+let gtFavoritesLoaded = false;
+
+async function gtLoadFavoriteIds() {
+  const token = localStorage.getItem('gt_token');
+  if (!token) { gtFavoriteIds = new Set(); gtFavoritesLoaded = true; return; }
+  try {
+    const res = await fetch(`${API_BASE_URL}/favorites`, { headers: { 'Authorization': 'Bearer ' + token } });
+    if (res.ok) {
+      const favs = await res.json();
+      gtFavoriteIds = new Set(favs.map(f => f.id));
+    }
+  } catch (err) {
+    // Non-critical — hearts just default to un-favorited if this fails.
+  } finally {
+    gtFavoritesLoaded = true;
+  }
+}
+
+function gtHeartHtml(destinationId) {
+  const filled = gtFavoriteIds.has(destinationId);
+  return `<button class="heart-btn ${filled ? 'filled' : ''}" onclick="gtToggleFavorite(${destinationId}, this); event.stopPropagation();" title="${filled ? 'Remove from favorites' : 'Add to favorites'}">${filled ? '❤️' : '🤍'}</button>`;
+}
+
+async function gtToggleFavorite(destinationId, btn) {
+  const token = localStorage.getItem('gt_token');
+  if (!token) {
+    window.location.href = '/login';
+    return;
+  }
+  const currentlyFavorited = gtFavoriteIds.has(destinationId);
+  try {
+    if (currentlyFavorited) {
+      await fetch(`${API_BASE_URL}/favorites/${destinationId}`, {
+        method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token }
+      });
+      gtFavoriteIds.delete(destinationId);
+    } else {
+      await fetch(`${API_BASE_URL}/favorites`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ destination_id: destinationId })
+      });
+      gtFavoriteIds.add(destinationId);
+    }
+    if (btn) {
+      const nowFilled = gtFavoriteIds.has(destinationId);
+      btn.classList.toggle('filled', nowFilled);
+      btn.textContent = nowFilled ? '❤️' : '🤍';
+      btn.title = nowFilled ? 'Remove from favorites' : 'Add to favorites';
+    }
+    document.dispatchEvent(new CustomEvent('gt:favorites-changed'));
+  } catch (err) {
+    alert('Could not update favorites: ' + err);
+  }
+}
+
+// ---- "Has this trip passed?" helper for the itineraries page ----
+function gtHasPassed(endDateStr) {
+  const today = new Date().toISOString().slice(0, 10);
+  return endDateStr < today;
+}
+
 function renderNavAuth() {
   const el = document.getElementById('nav-auth');
   if (!el) return;
@@ -137,6 +201,7 @@ function updateTransportEstimate() {
 
 document.addEventListener('DOMContentLoaded', () => {
   renderNavAuth();
+  gtLoadFavoriteIds();
 
   const transportSelect = document.getElementById('book-transport');
   if (transportSelect) {

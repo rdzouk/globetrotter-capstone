@@ -52,6 +52,21 @@ def page_planner():
     return render_template("planner.html")
 
 
+@app.route("/map-page")
+def page_map():
+    return render_template("map.html")
+
+
+@app.route("/favorites-page")
+def page_favorites():
+    return render_template("favorites.html")
+
+
+@app.route("/profile-page")
+def page_profile():
+    return render_template("profile.html")
+
+
 @app.route("/feedback-page")
 def page_feedback():
     return render_template("feedback.html")

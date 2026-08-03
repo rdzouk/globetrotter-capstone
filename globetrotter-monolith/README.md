@@ -216,6 +216,55 @@ do. What the app has instead is its own review system: any user who
 marks a place visited can leave a real star rating + comment, which
 shows up on that place's public reviews.
 
+## Latest round of additions
+
+- **Real interactive map, on its own page** (`/map-page`) — built on
+  [OpenFreeMap](https://openfreemap.org/) + MapLibre GL JS (free, no
+  API key, nicer vector-tile rendering than plain OpenStreetMap
+  raster tiles). Hover a pin for a quick name+description tooltip;
+  click for a full detail panel (image, categories, tags, nearby
+  places) and a **route builder**: turn on live location, pick a
+  place, and it draws a line from you to it with distance, and a
+  time/fare estimate per transport mode.
+- **Clickable tags and category badges** — click any tag chip or
+  category badge on a place card and it filters the whole page to
+  that tag/category instantly.
+- **"This period has passed" + Book again** — itineraries whose end
+  date is in the past show a passed badge and a one-click rebook
+  button (pre-fills the same place).
+- **Favorites** — heart any place from its card; see them all on the
+  new Favorites page (`GET`/`POST /favorites`, `DELETE /favorites/<id>`).
+- **"Show on map"** on every destination card, deep-linking straight
+  into the map page with that place pre-selected.
+- **Profile page** — edit your name and interests
+  (`GET`/`PATCH /profile`), and a consolidated language (EN/FR) +
+  theme switcher, alongside your (read-only) identity.
+- **A crafted SVG hero banner** on the login page, sketching Bastos,
+  Centre-ville's cathedral, Warda's mall, Hippodrome, and Nlongkak as
+  a stylized skyline over Yaoundé's hills.
+- **Category-relevant images** — every place now shows a real,
+  freely-licensed photo matching its category (a real restaurant
+  photo for restaurants, a real spa photo for spas, etc.) via
+  LoremFlickr, instead of random placeholder images.
+
+### Two honesty notes on this round
+
+**Photos are still not photos of these specific venues.** I pulled
+real names, addresses, coordinates, and ratings for every place, but
+I can't legally scrape and re-host actual Google Photos of these
+businesses — that's outside what their licensing allows, full stop.
+What's there now is a real, category-matched Creative-Commons photo
+per place (via LoremFlickr) — much better than random placeholders,
+but still not a photo of that exact restaurant/spa/hotel. If you want
+real per-venue photos, the correct path is Google's Places Photos API
+with your own key/billing; ask if you want that wired in.
+
+**Mobile app wasn't updated with this round** — live location, the
+route builder, favorites, clickable tags, book-again, and the profile
+page are currently web-only. Porting all of that to Flutter/Dart
+safely (given I can't compile-test it here) is its own multi-step
+project — happy to start on it next, one screen at a time.
+
 ## API Reference
 
 ### `POST /register`
