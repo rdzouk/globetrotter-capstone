@@ -58,7 +58,7 @@
       "name": "Tassa",
       "category": "restaurant",
       "neighborhood": "Bastos",
-      "address": "Derri\u00e8re l'usine Bastos, entr\u00e9e commissariat des Diplomates, Yaound\u00e9",
+      "address": "Derrière l'usine Bastos, entrée commissariat des Diplomates, Yaoundé",
       "lat": 3.8856164,
       "lng": 11.512473,
       "rating": 4.3,
@@ -73,7 +73,7 @@
       ],
       "description": "Bright garden cafe-restaurant in Bastos with a glass roof, coffee bar, and occasional live jazz nights.",
       "id": 1,
-      "image_url": "/static/images/places/1.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=1"
     },
     {
       "name": "Complexe le sims",
