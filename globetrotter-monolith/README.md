@@ -216,6 +216,27 @@ do. What the app has instead is its own review system: any user who
 marks a place visited can leave a real star rating + comment, which
 shows up on that place's public reviews.
 
+## Adding your own real photos
+
+Placeholder images work out of the box, but if you want to swap in
+real photos you've collected yourself:
+
+1. **Save each photo** as `<id>.jpg` (or `.jpeg`/`.png`) into
+   `frontend/static/images/places/` — the ID is the number next to
+   each place in `backend/data.json`, e.g. `1.jpg` for Tassa, `58.jpg`
+   for La Cathédrale. Landscape orientation, ~800×600px, under 300KB
+   works best.
+2. **Run the sync script**:
+   ```bash
+   cd backend
+   python update_images.py
+   ```
+   It scans that folder and points each matching place's `image_url`
+   at your local file — no manual JSON editing needed. Places without
+   a photo yet keep the placeholder, so you can add them gradually.
+3. Restart `python app.py` (or it'll pick it up on the next request
+   if debug mode's auto-reloader is running) and refresh the frontend.
+
 ## Latest round of additions
 
 - **Real interactive map, on its own page** (`/map-page`) — built on
