@@ -70,7 +70,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [colors.primary, colors.primary.withOpacity(0.75)],
+                      colors: [colors.primary, colors.primary.withValues(alpha: 0.75)],
                     ),
                     borderRadius: const BorderRadius.only(
                       bottomLeft: Radius.circular(32),
@@ -89,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       Text(
                         'Discover Yaoundé\'s best restaurants, spas & more',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white.withOpacity(0.9)),
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.9)),
                       ),
                     ],
                   ),

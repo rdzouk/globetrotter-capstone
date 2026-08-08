@@ -1,15 +1,26 @@
 # GlobeTrotter Travel Assistant — Yaoundé Edition
 
-A single Flask API, personalized to **Yaoundé, Cameroon** (53 real venues
-across 17 neighborhoods), with two clients: a web frontend and a Flutter
-mobile app — both talking to the same backend.
+**Phase 1 (monolith)** and **Phase 2 (microservices)** both live in
+this repo:
 
 ```
 globetrotter-monolith/
-├── backend/    # Flask JSON API — the only place data lives
-├── frontend/   # HTML/CSS/JS web client (browser)
-└── mobile/     # Flutter/Dart client (Android/iOS) — see mobile/README.md
+├── backend/         # Phase 1 — monolith Flask API (single process)
+├── microservices/   # Phase 2 — same functionality, decomposed into
+│                     #   3 services + an API Gateway — see its own
+│                     #   README.md for architecture, routing table,
+│                     #   and how to run it (Docker Compose or locally)
+├── frontend/        # HTML/CSS/JS web client — works against EITHER
+│                     #   backend, unchanged (both run on port 5000)
+└── mobile/           # Flutter/Dart client (Android/iOS) — see mobile/README.md
 ```
+
+Both backends expose the identical API on port 5000, so the frontend
+and mobile app work against whichever one you run, with zero code
+changes.
+
+A single Flask API, personalized to **Yaoundé, Cameroon** (58 real
+venues across 17 neighborhoods).
 
 The backend is a pure JSON API (CORS-enabled) — it has no idea whether
 it's being called by a browser, a phone, or curl. That separation is
@@ -223,19 +234,31 @@ real photos you've collected yourself:
 
 1. **Save each photo** as `<id>.jpg` (or `.jpeg`/`.png`) into
    `frontend/static/images/places/` — the ID is the number next to
-   each place in `backend/data.json`, e.g. `1.jpg` for Tassa, `58.jpg`
-   for La Cathédrale. Landscape orientation, ~800×600px, under 300KB
-   works best.
-2. **Run the sync script**:
+   each place (e.g. `1.jpg` for Tassa, `58.jpg` for La Cathédrale).
+   Landscape orientation, ~800×600px, under 300KB works best.
+2. **Run the sync script** for whichever backend you're using:
    ```bash
-   cd backend
-   python update_images.py
+   cd backend && python update_images.py                              # monolith
+   cd microservices/recommendation-service && python seed_destinations.py  # microservices
    ```
-   It scans that folder and points each matching place's `image_url`
-   at your local file — no manual JSON editing needed. Places without
-   a photo yet keep the placeholder, so you can add them gradually.
-3. Restart `python app.py` (or it'll pick it up on the next request
-   if debug mode's auto-reloader is running) and refresh the frontend.
+   Both scan that same shared folder and point each matching place's
+   `image_url` at your local file — no manual JSON editing needed.
+   Places without a photo yet keep the placeholder, so you can add
+   them gradually.
+3. **If a place's data ever needs a full reset** (most commonly:
+   you ran `pytest`, which intentionally wipes the destinations file
+   down to a 2-place test dataset so tests don't leak state — see
+   `## What this phase deliberately does NOT solve`), re-run:
+   ```bash
+   cd backend && python seed_destinations.py                              # monolith
+   cd microservices/recommendation-service && python seed_destinations.py  # microservices
+   ```
+   **This is safe to run any time and will never overwrite photos
+   you've already added** — it checks `frontend/static/images/places/`
+   first for each place, and only falls back to a placeholder if no
+   local photo exists yet for that ID.
+4. Restart the backend (or let its auto-reloader pick it up) and
+   refresh the frontend.
 
 ## Latest round of additions
 

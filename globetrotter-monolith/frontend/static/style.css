@@ -343,6 +343,7 @@ button.secondary:hover { background: #7c7c79; }
   font-size: 0.85rem !important;
   margin-top: 0 !important;
 }
+[data-theme="dark"] .checkbox-label { background: #23292c; }
 
 .modal {
   position: fixed;
