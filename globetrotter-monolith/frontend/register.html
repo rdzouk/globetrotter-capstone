@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register — GlobeTrotter</title>
+  <meta name="description" content="Create a free GlobeTrotter account to start planning your trip around Yaoundé.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://globetrotter.example.com/register.html">
+  <meta property="og:title" content="Create an account — GlobeTrotter">
+  <meta property="og:description" content="Create a free GlobeTrotter account to start planning your trip around Yaoundé.">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary">
+  <link rel="stylesheet" href="static/style.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#1a6b6b">
+  <link rel="apple-touch-icon" href="static/icons/icon-192.png">
+</head>
+<body>
+  <div id="navbar-placeholder"></div>
+
+  <main class="container" id="main-content">
+    <div class="form-card">
+      <h1>Create an account</h1>
+      <p class="muted" style="font-size:0.85rem;">Your name can be shared with other users — it's just a display name. Your email or phone number is what uniquely identifies your account.</p>
+      <form id="register-form">
+        <label>Name</label>
+        <input type="text" id="name" required>
+
+        <label>Sign up with</label>
+        <div class="identifier-toggle">
+          <label><input type="radio" name="identifier-type" value="email" checked> Email</label>
+          <label><input type="radio" name="identifier-type" value="phone"> Phone number</label>
+        </div>
+        <input type="text" id="identifier" placeholder="you@example.com" required>
+
+        <label>Password</label>
+        <input type="password" id="password" required minlength="4">
+
+        <label>Interests (pick any that apply)</label>
+        <div class="checkbox-group">
+          <label class="checkbox-label"><input type="checkbox" value="restaurant" class="pref-checkbox"> restaurant</label>
+          <label class="checkbox-label"><input type="checkbox" value="fancy" class="pref-checkbox"> fancy</label>
+          <label class="checkbox-label"><input type="checkbox" value="casual" class="pref-checkbox"> casual</label>
+          <label class="checkbox-label"><input type="checkbox" value="affordable" class="pref-checkbox"> affordable</label>
+          <label class="checkbox-label"><input type="checkbox" value="spa" class="pref-checkbox"> spa</label>
+          <label class="checkbox-label"><input type="checkbox" value="sports" class="pref-checkbox"> sports</label>
+          <label class="checkbox-label"><input type="checkbox" value="nightlife" class="pref-checkbox"> nightlife</label>
+          <label class="checkbox-label"><input type="checkbox" value="hotel" class="pref-checkbox"> hotel</label>
+          <label class="checkbox-label"><input type="checkbox" value="attraction" class="pref-checkbox"> attraction</label>
+          <label class="checkbox-label"><input type="checkbox" value="live-music" class="pref-checkbox"> live-music</label>
+          <label class="checkbox-label"><input type="checkbox" value="outdoor" class="pref-checkbox"> outdoor</label>
+          <label class="checkbox-label"><input type="checkbox" value="family-friendly" class="pref-checkbox"> family-friendly</label>
+        </div>
+
+        <button type="submit">Register</button>
+        <p id="register-message"></p>
+      </form>
+      <p>Already have an account? <a href="login.html">Log in</a></p>
+    </div>
+  </main>
+
+  <div id="modal-placeholder"></div>
+
+  <script src="static/layout.js"></script>
+  <script src="static/config.js"></script>
+  <script src="static/i18n.js"></script>
+  <script src="static/app.js"></script>
+  <script>
+    const identifierInput = document.getElementById('identifier');
+    document.querySelectorAll('input[name="identifier-type"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        const isEmail = document.querySelector('input[name="identifier-type"]:checked').value === 'email';
+        identifierInput.placeholder = isEmail ? 'you@example.com' : '+237 6XX XXX XXX';
+        identifierInput.type = isEmail ? 'email' : 'tel';
+        identifierInput.value = '';
+      });
+    });
+
+    document.getElementById('register-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('name').value;
+      const password = document.getElementById('password').value;
+      const identifierType = document.querySelector('input[name="identifier-type"]:checked').value;
+      const identifierValue = document.getElementById('identifier').value;
+      const preferences = Array.from(document.querySelectorAll('.pref-checkbox:checked')).map(c => c.value);
+      const msg = document.getElementById('register-message');
+
+      const payload = { name, password, preferences };
+      if (identifierType === 'email') payload.email = identifierValue;
+      else payload.phone = identifierValue;
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          msg.textContent = (data.errors && data.errors.join(', ')) || data.error || 'Registration failed';
+          msg.className = 'error';
+          return;
+        }
+        msg.textContent = 'Account created! Redirecting to login...';
+        msg.className = 'success';
+        setTimeout(() => window.location.href = "login.html", 800);
+      } catch (err) {
+        msg.textContent = 'Network error: ' + err;
+        msg.className = 'error';
+      }
+    });
+  </script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+    }
+  </script>
+</body>
+</html>

@@ -1,210 +1,262 @@
 """
-Data Access Layer
-------------------
-All reads/writes to the single JSON file go through here. A lock guards
-against concurrent writes corrupting the file (the file itself is the
-single point of failure in this monolith phase — that's the point of
-this exercise).
+Data Access Layer — PostgreSQL/SQLAlchemy version.
+
+This is a drop-in replacement for the original JSON-file
+data_access.py: every function has the exact same name, signature,
+and return shape (plain dicts, not ORM objects) as before, so
+business_logic.py and app.py needed ZERO changes for this migration.
+That's by design — see ARCHITECTURE_AUDIT.md's Compatibility
+Considerations section.
+
+Ownership is enforced here, not trusted from the caller: every
+per-user query filters by the user_id passed in (which callers only
+ever get from the authenticated request, never from client input).
 """
-import json
-import os
-import threading
-
-DATA_FILE = os.path.join(os.path.dirname(__file__), "data.json")
-_lock = threading.Lock()
+from database import get_session
+from models import User, Destination, Itinerary, Favorite, Feedback
 
 
-def _read_raw():
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+# ---- Conversion helpers: ORM object -> plain dict ----
+
+def _user_to_dict(u):
+    return {
+        "id": u.id, "name": u.name, "email": u.email, "phone": u.phone,
+        "password_hash": u.password_hash, "preferences": u.preferences,
+    }
 
 
-def _write_raw(data):
-    tmp_path = DATA_FILE + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
-    os.replace(tmp_path, DATA_FILE)  # atomic on POSIX
+def _destination_to_dict(d):
+    return {
+        "id": d.id, "name": d.name, "category": d.category, "neighborhood": d.neighborhood,
+        "address": d.address, "lat": d.lat, "lng": d.lng, "rating": d.rating,
+        "rating_count": d.rating_count, "price_level": d.price_level, "phone": d.phone,
+        "tags": d.tags, "description": d.description, "image_url": d.image_url,
+    }
 
 
-def load():
-    with _lock:
-        return _read_raw()
+def _itinerary_to_dict(i):
+    review = None
+    if i.review_rating is not None:
+        review = {"rating": i.review_rating, "comment": i.review_comment, "visited_date": i.review_visited_date}
+    return {
+        "id": i.id, "user_id": i.user_id, "destination_id": i.destination_id,
+        "start_date": i.start_date, "end_date": i.end_date, "time_slot": i.time_slot,
+        "transport_mode": i.transport_mode, "notes": i.notes, "shared_with": i.shared_with,
+        "visited": i.visited, "review": review,
+    }
 
 
-def save(data):
-    with _lock:
-        _write_raw(data)
+def _feedback_to_dict(f):
+    return {"id": f.id, "user_id": f.user_id, "user_name": f.user_name, "message": f.message, "rating": f.rating}
 
 
-def next_id(items):
-    return (max((item["id"] for item in items), default=0)) + 1
+def _favorite_to_dict(f):
+    return {"id": f.id, "user_id": f.user_id, "destination_id": f.destination_id}
 
 
 # ---- Users ----
+
 def get_users():
-    return load()["users"]
+    with get_session() as s:
+        return [_user_to_dict(u) for u in s.query(User).all()]
 
 
 def get_user_by_email(email):
     if not email:
         return None
-    email = email.lower()
-    for u in get_users():
-        if u.get("email") and u["email"].lower() == email:
-            return u
-    return None
+    with get_session() as s:
+        u = s.query(User).filter(User.email.ilike(email)).first()
+        return _user_to_dict(u) if u else None
 
 
 def get_user_by_phone(phone):
     if not phone:
         return None
-    for u in get_users():
-        if u.get("phone") and u["phone"] == phone:
-            return u
-    return None
+    with get_session() as s:
+        u = s.query(User).filter(User.phone == phone).first()
+        return _user_to_dict(u) if u else None
 
 
 def get_user_by_id(user_id):
-    for u in get_users():
-        if u["id"] == user_id:
-            return u
-    return None
+    with get_session() as s:
+        u = s.get(User, user_id)
+        return _user_to_dict(u) if u else None
 
 
 def add_user(user):
-    data = load()
-    user["id"] = next_id(data["users"])
-    data["users"].append(user)
-    save(data)
-    return user
+    with get_session() as s:
+        u = User(
+            name=user["name"], email=user.get("email"), phone=user.get("phone"),
+            password_hash=user["password_hash"], preferences=user.get("preferences", []),
+        )
+        s.add(u)
+        s.flush()  # assigns u.id without needing a separate commit
+        return _user_to_dict(u)
 
 
 def update_user(user_id, updates):
-    data = load()
-    for u in data["users"]:
-        if u["id"] == user_id:
-            u.update(updates)
-            save(data)
-            return u
-    return None
+    with get_session() as s:
+        u = s.get(User, user_id)
+        if not u:
+            return None
+        for key, value in updates.items():
+            setattr(u, key, value)
+        s.flush()
+        return _user_to_dict(u)
 
 
 # ---- Destinations ----
+
 def get_destinations():
-    return load()["destinations"]
+    with get_session() as s:
+        return [_destination_to_dict(d) for d in s.query(Destination).all()]
 
 
 def get_destination_by_id(destination_id):
-    for d in get_destinations():
-        if d["id"] == destination_id:
-            return d
-    return None
+    with get_session() as s:
+        d = s.get(Destination, destination_id)
+        return _destination_to_dict(d) if d else None
 
 
 # ---- Itineraries ----
+
 def get_itineraries():
-    return load()["itineraries"]
+    with get_session() as s:
+        return [_itinerary_to_dict(i) for i in s.query(Itinerary).all()]
 
 
 def get_itineraries_for_user(user_id):
-    return [i for i in get_itineraries() if i["user_id"] == user_id]
+    with get_session() as s:
+        rows = s.query(Itinerary).filter(Itinerary.user_id == user_id).all()
+        return [_itinerary_to_dict(i) for i in rows]
 
 
 def get_itinerary_by_id(itinerary_id):
-    for i in get_itineraries():
-        if i["id"] == itinerary_id:
-            return i
-    return None
+    with get_session() as s:
+        i = s.get(Itinerary, itinerary_id)
+        return _itinerary_to_dict(i) if i else None
 
 
 def add_itinerary(itinerary):
-    data = load()
-    itinerary["id"] = next_id(data["itineraries"])
-    data["itineraries"].append(itinerary)
-    save(data)
-    return itinerary
+    with get_session() as s:
+        i = Itinerary(
+            user_id=itinerary["user_id"], destination_id=itinerary["destination_id"],
+            start_date=itinerary["start_date"], end_date=itinerary["end_date"],
+            time_slot=itinerary.get("time_slot", ""), transport_mode=itinerary.get("transport_mode", ""),
+            notes=itinerary.get("notes", ""), shared_with=itinerary.get("shared_with", []),
+            visited=itinerary.get("visited", False),
+        )
+        s.add(i)
+        s.flush()
+        return _itinerary_to_dict(i)
 
 
 def update_itinerary(itinerary_id, updates):
-    data = load()
-    for i in data["itineraries"]:
-        if i["id"] == itinerary_id:
-            i.update(updates)
-            save(data)
-            return i
-    return None
+    with get_session() as s:
+        i = s.get(Itinerary, itinerary_id)
+        if not i:
+            return None
+        for key, value in updates.items():
+            if key == "review":
+                if value is None:
+                    i.review_rating, i.review_comment, i.review_visited_date = None, "", None
+                else:
+                    i.review_rating = value["rating"]
+                    i.review_comment = value.get("comment", "")
+                    i.review_visited_date = value["visited_date"]
+            else:
+                setattr(i, key, value)
+        s.flush()
+        return _itinerary_to_dict(i)
 
 
 def get_reviews_for_destination(destination_id):
     """All reviews left on a given place, across every user, newest first."""
-    reviews = []
-    for i in get_itineraries():
-        if i["destination_id"] == destination_id and i.get("review"):
-            user = get_user_by_id(i["user_id"])
+    with get_session() as s:
+        rows = (
+            s.query(Itinerary)
+            .filter(Itinerary.destination_id == destination_id, Itinerary.review_rating.isnot(None))
+            .order_by(Itinerary.created_at.desc())
+            .all()
+        )
+        reviews = []
+        for i in rows:
+            user = s.get(User, i.user_id)
             reviews.append({
-                "itinerary_id": i["id"],
-                "reviewer_name": user["name"] if user else "Former user",
-                "rating": i["review"]["rating"],
-                "comment": i["review"]["comment"],
-                "visited_date": i["review"]["visited_date"],
+                "itinerary_id": i.id,
+                "reviewer_name": user.name if user else "Former user",
+                "rating": i.review_rating,
+                "comment": i.review_comment,
+                "visited_date": i.review_visited_date,
             })
-    return reviews
+        return reviews
 
 
 # ---- App feedback (comments/critiques about the app itself) ----
+
 def get_feedback():
-    return load().get("feedback", [])
+    with get_session() as s:
+        rows = s.query(Feedback).order_by(Feedback.created_at.asc()).all()
+        return [_feedback_to_dict(f) for f in rows]
 
 
 def add_feedback(feedback):
-    data = load()
-    data.setdefault("feedback", [])
-    feedback["id"] = next_id(data["feedback"])
-    data["feedback"].append(feedback)
-    save(data)
-    return feedback
+    with get_session() as s:
+        f = Feedback(
+            user_id=feedback["user_id"], user_name=feedback["user_name"],
+            message=feedback["message"], rating=feedback.get("rating"),
+        )
+        s.add(f)
+        s.flush()
+        return _feedback_to_dict(f)
 
 
 # ---- Favorites ----
+
 def get_favorites():
-    return load().get("favorites", [])
+    with get_session() as s:
+        return [_favorite_to_dict(f) for f in s.query(Favorite).all()]
 
 
 def get_favorite_destination_ids(user_id):
-    return {f["destination_id"] for f in get_favorites() if f["user_id"] == user_id}
+    with get_session() as s:
+        rows = s.query(Favorite.destination_id).filter(Favorite.user_id == user_id).all()
+        return {row[0] for row in rows}
 
 
 def is_favorited(user_id, destination_id):
-    return any(
-        f["user_id"] == user_id and f["destination_id"] == destination_id
-        for f in get_favorites()
-    )
+    with get_session() as s:
+        return (
+            s.query(Favorite)
+            .filter(Favorite.user_id == user_id, Favorite.destination_id == destination_id)
+            .first()
+            is not None
+        )
 
 
 def add_favorite(user_id, destination_id):
-    data = load()
-    data.setdefault("favorites", [])
-    existing = next(
-        (f for f in data["favorites"] if f["user_id"] == user_id and f["destination_id"] == destination_id),
-        None,
-    )
-    if existing:
-        return existing, False
-    favorite = {"id": next_id(data["favorites"]), "user_id": user_id, "destination_id": destination_id}
-    data["favorites"].append(favorite)
-    save(data)
-    return favorite, True
+    with get_session() as s:
+        existing = (
+            s.query(Favorite)
+            .filter(Favorite.user_id == user_id, Favorite.destination_id == destination_id)
+            .first()
+        )
+        if existing:
+            return _favorite_to_dict(existing), False
+        f = Favorite(user_id=user_id, destination_id=destination_id)
+        s.add(f)
+        s.flush()
+        return _favorite_to_dict(f), True
 
 
 def remove_favorite(user_id, destination_id):
-    data = load()
-    data.setdefault("favorites", [])
-    before = len(data["favorites"])
-    data["favorites"] = [
-        f for f in data["favorites"]
-        if not (f["user_id"] == user_id and f["destination_id"] == destination_id)
-    ]
-    removed = len(data["favorites"]) < before
-    if removed:
-        save(data)
-    return removed
+    with get_session() as s:
+        existing = (
+            s.query(Favorite)
+            .filter(Favorite.user_id == user_id, Favorite.destination_id == destination_id)
+            .first()
+        )
+        if not existing:
+            return False
+        s.delete(existing)
+        return True

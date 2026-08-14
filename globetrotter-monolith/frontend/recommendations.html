@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recommendations — GlobeTrotter</title>
+  <meta name="description" content="Personalized travel recommendations for Yaoundé, based on your interests.">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="stylesheet" href="static/style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#1a6b6b">
+  <link rel="apple-touch-icon" href="static/icons/icon-192.png">
+</head>
+<body>
+  <div id="navbar-placeholder"></div>
+
+  <main class="container" id="main-content">
+    <h1>Picked for you</h1>
+    <p class="muted">Based on your interests and where you haven't been yet.</p>
+    <div id="map" class="map-view"></div>
+    <div id="rec-grid" class="card-grid">
+      <p class="muted">Loading...</p>
+    </div>
+  </main>
+
+  <div id="modal-placeholder"></div>
+
+  <script src="static/layout.js"></script>
+  <script src="static/config.js"></script>
+  <script src="static/i18n.js"></script>
+  <script src="static/app.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+    const map = L.map('map').setView([3.8667, 11.5167], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19
+    }).addTo(map);
+
+    async function loadRecommendations() {
+      const grid = document.getElementById('rec-grid');
+      const token = localStorage.getItem('gt_token');
+      if (!token) {
+        grid.innerHTML = '<p class="muted">Please <a href="login.html">log in</a> to see personalized recommendations.</p>';
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE_URL}/recommendations`, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (res.status === 401) {
+          localStorage.removeItem('gt_token');
+          grid.innerHTML = '<p class="muted">Session expired. Please <a href="login.html">log in</a> again.</p>';
+          return;
+        }
+        const data = await res.json();
+        if (!data.length) {
+          grid.innerHTML = '<p class="muted">No recommendations yet — try adding interests or exploring destinations first.</p>';
+          return;
+        }
+        const bounds = [];
+        data.forEach(d => {
+          L.circleMarker([d.lat, d.lng], { radius: 8, fillColor: '#1a6b6b', color: '#fff', weight: 2, fillOpacity: 0.9 })
+            .addTo(map)
+            .bindPopup(`<strong>${d.name}</strong><br>${d.category} · ${d.neighborhood}<br>⭐ ${d.rating}`);
+          bounds.push([d.lat, d.lng]);
+        });
+        if (bounds.length) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+        grid.innerHTML = data.map(d => `
+          <div class="card">
+            <img class="place-image" src="${d.image_url}" alt="${d.name}" loading="lazy">
+            <div class="card-header">
+              <h3>${d.name}</h3>
+              <span class="category-badge category-${d.category}">${d.category}</span>
+            </div>
+            <p class="muted">${d.neighborhood} · ${d.address}</p>
+            <p>${d.description}</p>
+            <div class="tags">${d.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
+            <p class="popularity">⭐ ${d.rating} (${d.rating_count} ratings)</p>
+            <button onclick="openBookModal(${d.id}, '${d.name.replace(/'/g, "\\'")}', ${d.lat}, ${d.lng})">Plan itinerary</button>
+          </div>
+        `).join('');
+      } catch (err) {
+        grid.innerHTML = '<p class="error">Could not load recommendations: ' + err + '</p>';
+      }
+    }
+    loadRecommendations();
+  </script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+    }
+  </script>
+</body>
+</html>

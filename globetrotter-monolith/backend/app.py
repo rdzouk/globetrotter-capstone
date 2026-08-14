@@ -2,36 +2,61 @@
 GlobeTrotter Travel Assistant — Monolith Phase
 ------------------------------------------------
 API Layer. Single Flask process, all business logic and data access
-imported as modules (not services). Everything lives on one server;
-the JSON file is the only datastore. This is the deliberately-limited
-baseline: no horizontal scaling, no redundancy, single point of
-failure at the file and at the process.
+imported as modules (not services).
 
-This is now a PURE JSON API — no HTML pages are served here. Any
-client (the frontend/ web pages, a Flutter app, curl, Postman) talks
-to it over HTTP. CORS is enabled so browser-based frontends running
-on a different origin/port can call it directly.
+Production-hardened per ARCHITECTURE_AUDIT.md: environment-based
+config (config.py), locked-down CORS, rate limiting on auth endpoints,
+security headers, structured logging with per-request IDs, and
+/health + /ready endpoints for Docker/load-balancer health checks.
 
-Run:
+Run (development):
     python app.py
+Run (production):
+    gunicorn -w 4 -b 0.0.0.0:5000 app:app
 """
 import logging
+import time
+import uuid
 from functools import wraps
 
 import jwt
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, g
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from werkzeug.exceptions import HTTPException
 
+import config
 import auth
+import database
 import data_access as db
 import business_logic as logic
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+database.init_db()
+
+logging.basicConfig(level=config.LOG_LEVEL, format="%(asctime)s %(levelname)s  %(message)s")
+
+
+class _RequestIdFilter(logging.Filter):
+    """Injects the current request's ID into every log record, so a
+    single request's log lines can be grepped out of a shared log
+    stream — see ARCHITECTURE_AUDIT.md's Observability requirements."""
+    def filter(self, record):
+        try:
+            from flask import has_request_context
+            record.request_id = g.request_id if has_request_context() and hasattr(g, "request_id") else "-"
+        except RuntimeError:
+            record.request_id = "-"
+        return True
+
+
 logger = logging.getLogger("globetrotter")
+logger.addFilter(_RequestIdFilter())
 
 app = Flask(__name__)
-CORS(app)  # allow requests from any origin — fine for a dev/course project;
-           # in production you'd restrict this to your actual frontend's domain
+CORS(app, origins=config.CORS_ORIGINS)
+
+limiter = Limiter(get_remote_address, app=app, storage_uri=config.REDIS_URL, default_limits=[], enabled=config.RATELIMIT_ENABLED)
 
 
 # ---------------------------------------------------------------------
@@ -56,21 +81,71 @@ def require_auth(f):
     return wrapper
 
 
+# ---------------------------------------------------------------------
+# Request lifecycle: ID assignment, timing, structured logging,
+# security headers on every response.
+# ---------------------------------------------------------------------
 @app.before_request
-def log_request():
-    logger.info("%s %s", request.method, request.path)
+def start_request():
+    g.request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    g.start_time = time.time()
+
+
+@app.after_request
+def finish_request(response):
+    duration_ms = round((time.time() - g.start_time) * 1000, 1) if hasattr(g, "start_time") else None
+    logger.info("%s %s -> %s (%sms)", request.method, request.path, response.status_code, duration_ms)
+    response.headers["X-Request-ID"] = g.get("request_id", "-")
+
+    # Security headers (audit Critical Problem #8)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if config.IS_PRODUCTION:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 
 @app.errorhandler(Exception)
 def handle_unexpected_error(e):
+    # HTTPExceptions (404, 405, 429 from the rate limiter, etc.) already
+    # carry the correct status code and a safe message — only genuinely
+    # unexpected exceptions (real bugs) should become a generic 500.
+    if isinstance(e, HTTPException):
+        response = e.get_response()
+        response.data = jsonify({"error": e.description or e.name}).data
+        response.content_type = "application/json"
+        return response
     logger.exception("Unhandled error")
     return jsonify({"error": "Internal server error"}), 500
+
+
+# ---------------------------------------------------------------------
+# Health endpoints (audit Problem #9) — separate liveness/readiness
+# semantics, matching what Docker health checks and load balancers
+# expect: /health = "is the process alive", /ready = "can it actually
+# serve requests" (i.e. is its datastore reachable).
+# ---------------------------------------------------------------------
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"}), 200
+
+
+@app.route("/ready", methods=["GET"])
+def ready():
+    try:
+        db.get_destinations()
+    except Exception:
+        logger.exception("Readiness check failed — datastore unreachable")
+        return jsonify({"status": "not ready", "reason": "datastore unreachable"}), 503
+    return jsonify({"status": "ready"}), 200
 
 
 # ---------------------------------------------------------------------
 # POST /register
 # ---------------------------------------------------------------------
 @app.route("/register", methods=["POST"])
+@limiter.limit("5 per minute")
 def register():
     """
     name is a display name and MAY duplicate across users (e.g. two
@@ -110,6 +185,7 @@ def register():
 # POST /login
 # ---------------------------------------------------------------------
 @app.route("/login", methods=["POST"])
+@limiter.limit("10 per minute")
 def login():
     """
     Accepts either {"email": ..., "password": ...} or
@@ -245,6 +321,7 @@ def destination_reviews(destination_id):
 # ---------------------------------------------------------------------
 @app.route("/feedback", methods=["POST"])
 @require_auth
+@limiter.limit("10 per minute")
 def submit_feedback():
     body = request.get_json(silent=True) or {}
     errors = logic.validate_feedback_payload(body)
@@ -378,4 +455,4 @@ def remove_favorite(destination_id):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=config.PORT, debug=config.DEBUG)

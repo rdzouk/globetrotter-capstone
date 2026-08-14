@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Map — GlobeTrotter</title>
+  <meta name="description" content="An interactive map of Yaoundé's best restaurants, spas, hotels, and attractions, with live directions and transport estimates.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://globetrotter.example.com/map.html">
+  <meta property="og:title" content="Yaoundé Map — GlobeTrotter">
+  <meta property="og:description" content="An interactive map of Yaoundé's best restaurants, spas, hotels, and attractions, with live directions and transport estimates.">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary">
+  <link rel="stylesheet" href="static/style.css">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" />
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#1a6b6b">
+  <link rel="apple-touch-icon" href="static/icons/icon-192.png">
+</head>
+<body>
+  <div id="navbar-placeholder"></div>
+
+  <main class="container" id="main-content">
+    <h1>Yaoundé map</h1>
+    <p class="muted">Powered by <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a> — a free, open vector map. Hover a pin for a quick preview, click for full details, nearby places, and a route from your location.</p>
+
+    <div class="search-bar">
+      <input type="text" id="map-q" placeholder="Search...">
+      <select id="map-category">
+        <option value="">Any category</option>
+        <option value="restaurant">Restaurants</option>
+        <option value="sports">Sport complexes</option>
+        <option value="spa">Spas &amp; relaxation</option>
+        <option value="nightlife">Nightlife</option>
+        <option value="hotel">Hotels</option>
+        <option value="attraction">Attractions &amp; parks</option>
+        <option value="entertainment">Entertainment &amp; cinema</option>
+        <option value="landmark">Landmarks</option>
+      </select>
+      <button id="map-search-btn">Search</button>
+      <button id="map-locate-btn" class="secondary">📍 Use my location (live)</button>
+    </div>
+
+    <div class="map-page-layout">
+      <div id="map" class="map-view-full"></div>
+      <div id="map-sidebar" class="map-sidebar">
+        <div id="sidebar-default">
+          <h3>Tap or click a pin</h3>
+          <p class="muted">Select any place on the map to see full details, its category and tags, nearby places, and a route from your current location.</p>
+          <div id="location-status" class="muted" style="font-size:0.85rem;"></div>
+        </div>
+        <div id="sidebar-detail" class="hidden"></div>
+      </div>
+    </div>
+  </main>
+
+  <div id="modal-placeholder"></div>
+
+  <script src="static/layout.js"></script>
+  <script src="static/config.js"></script>
+  <script src="static/i18n.js"></script>
+  <script src="static/app.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+  <script>
+    const categoryColors = {
+      restaurant: '#c0392b', sports: '#2980b9', spa: '#8e44ad', nightlife: '#d35400',
+      hotel: '#16a085', attraction: '#27ae60', entertainment: '#f39c12', landmark: '#34495e'
+    };
+
+    const map = new maplibregl.Map({
+      container: 'map',
+      style: 'https://tiles.openfreemap.org/styles/liberty',
+      center: [11.5167, 3.8667],
+      zoom: 12,
+    });
+    map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+    let allPlaces = [];
+    let selectedPlace = null;
+    let userMarker = null;
+    const tooltip = document.createElement('div');
+    tooltip.className = 'map-hover-tooltip hidden';
+    document.getElementById('map').appendChild(tooltip);
+
+    function toGeoJSON(places) {
+      return {
+        type: 'FeatureCollection',
+        features: places.map(d => ({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [d.lng, d.lat] },
+          properties: { ...d, tags: JSON.stringify(d.tags) },
+        })),
+      };
+    }
+
+    function refreshSource(places) {
+      const source = map.getSource('places');
+      if (source) source.setData(toGeoJSON(places));
+    }
+
+    map.on('load', async () => {
+      map.addSource('places', { type: 'geojson', data: toGeoJSON([]) });
+      map.addLayer({
+        id: 'places-circle',
+        type: 'circle',
+        source: 'places',
+        paint: {
+          'circle-radius': 8,
+          'circle-color': [
+            'match', ['get', 'category'],
+            'restaurant', categoryColors.restaurant,
+            'sports', categoryColors.sports,
+            'spa', categoryColors.spa,
+            'nightlife', categoryColors.nightlife,
+            'hotel', categoryColors.hotel,
+            'attraction', categoryColors.attraction,
+            'entertainment', categoryColors.entertainment,
+            'landmark', categoryColors.landmark,
+            '#555',
+          ],
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#ffffff',
+        },
+      });
+
+      await loadPlaces();
+
+      map.on('mousemove', 'places-circle', (e) => {
+        map.getCanvas().style.cursor = 'pointer';
+        const p = e.features[0].properties;
+        const desc = (p.description || '');
+        tooltip.innerHTML = `<strong>${p.name}</strong><br><span class="muted">${p.category} · ${p.neighborhood}</span><br>${desc.slice(0, 90)}${desc.length > 90 ? '…' : ''}`;
+        tooltip.style.left = (e.point.x + 14) + 'px';
+        tooltip.style.top = (e.point.y + 10) + 'px';
+        tooltip.classList.remove('hidden');
+      });
+      map.on('mouseleave', 'places-circle', () => {
+        map.getCanvas().style.cursor = '';
+        tooltip.classList.add('hidden');
+      });
+      map.on('click', 'places-circle', (e) => {
+        selectPlace(normalizeProps(e.features[0].properties));
+      });
+
+      const params = new URLSearchParams(window.location.search);
+      const placeId = params.get('place');
+      if (placeId) {
+        const match = allPlaces.find(p => String(p.id) === placeId);
+        if (match) {
+          map.flyTo({ center: [match.lng, match.lat], zoom: 16 });
+          selectPlace(match);
+        }
+      }
+    });
+
+    function normalizeProps(props) {
+      const out = { ...props };
+      if (typeof out.tags === 'string') {
+        try { out.tags = JSON.parse(out.tags); } catch (e) { out.tags = []; }
+      }
+      return out;
+    }
+
+    async function loadPlaces() {
+      const q = document.getElementById('map-q').value;
+      const category = document.getElementById('map-category').value;
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      if (category) params.set('category', category);
+      try {
+        const res = await fetch(`${API_BASE_URL}/destinations?` + params.toString());
+        allPlaces = await res.json();
+        refreshSource(allPlaces);
+      } catch (err) {
+        console.error('Could not load places', err);
+      }
+    }
+
+    document.getElementById('map-search-btn').addEventListener('click', loadPlaces);
+
+    document.getElementById('map-locate-btn').addEventListener('click', () => {
+      gtStartLiveLocation((loc) => {
+        if (userMarker) userMarker.remove();
+        const el = document.createElement('div');
+        el.style.cssText = 'background:#1a73e8;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 0 4px rgba(0,0,0,0.4);';
+        userMarker = new maplibregl.Marker({ element: el }).setLngLat([loc.lng, loc.lat]).addTo(map);
+        document.getElementById('location-status').textContent = '📍 Live location active';
+        if (selectedPlace) renderRoute(selectedPlace);
+      });
+    });
+
+    async function selectPlace(place) {
+      selectedPlace = place;
+      document.getElementById('sidebar-default').classList.add('hidden');
+      const panel = document.getElementById('sidebar-detail');
+      panel.classList.remove('hidden');
+
+      const stars = '⭐'.repeat(Math.round(place.rating));
+      panel.innerHTML = `
+        <button class="secondary" onclick="deselectPlace()" style="margin-bottom:8px;">← Back</button>
+        <img class="place-image" src="${place.image_url}" alt="${place.name}">
+        <h2>${place.name} ${gtHeartHtml(place.id)}</h2>
+        <span class="category-badge category-${place.category}">${place.category}</span>
+        ${place.tags.map(t => `<span class="tag">${t}</span>`).join(' ')}
+        <p class="muted" style="margin-top:8px;">${place.neighborhood} · ${place.address}</p>
+        ${place.phone ? `<p class="muted">${place.phone}</p>` : ''}
+        <p>${place.description}</p>
+        <p class="popularity">${stars} ${place.rating} (${place.rating_count} ratings)</p>
+        <button onclick="openBookModal(${place.id}, '${place.name.replace(/'/g, "\\'")}', ${place.lat}, ${place.lng})">Plan itinerary</button>
+        <button class="secondary" onclick="renderRoute(selectedPlace)">🧭 Route from my location</button>
+        <div id="route-panel"></div>
+        <div id="nearby-panel" class="nearby-section">Loading nearby places...</div>
+      `;
+
+      map.flyTo({ center: [place.lng, place.lat], zoom: 15 });
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/destinations/${place.id}/nearby?limit=5`);
+        const nearby = await res.json();
+        const nearbyPanel = document.getElementById('nearby-panel');
+        if (!nearby.length) {
+          nearbyPanel.innerHTML = '<strong>Nearby places</strong><br><span class="muted">Nothing else listed within 3km.</span>';
+        } else {
+          nearbyPanel.innerHTML = '<strong>Nearby places</strong><br>' + nearby.map(n =>
+            `<a href="#" onclick="event.preventDefault(); const m=allPlaces.find(p=>p.id===${n.id}); if(m) selectPlace(m);">${n.name}</a> <span class="muted">(${n.distance_km} km · ${n.category})</span>`
+          ).join('<br>');
+        }
+      } catch (err) {
+        document.getElementById('nearby-panel').innerHTML = '<span class="error">Could not load nearby places.</span>';
+      }
+
+      if (gtUserLocation) renderRoute(place);
+    }
+
+    function deselectPlace() {
+      selectedPlace = null;
+      document.getElementById('sidebar-detail').classList.add('hidden');
+      document.getElementById('sidebar-default').classList.remove('hidden');
+      if (map.getLayer('route-line')) map.removeLayer('route-line');
+      if (map.getSource('route-line')) map.removeSource('route-line');
+    }
+
+    function renderRoute(place) {
+      const routePanel = document.getElementById('route-panel');
+      if (!gtUserLocation) {
+        routePanel.innerHTML = '<p class="muted" style="font-size:0.85rem;">Turn on "Use my location" above to get a route and fare/time estimate.</p>';
+        return;
+      }
+      const lineGeoJSON = {
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: [[gtUserLocation.lng, gtUserLocation.lat], [place.lng, place.lat]] },
+      };
+      if (map.getSource('route-line')) {
+        map.getSource('route-line').setData(lineGeoJSON);
+      } else {
+        map.addSource('route-line', { type: 'geojson', data: lineGeoJSON });
+        map.addLayer({
+          id: 'route-line', type: 'line', source: 'route-line',
+          paint: { 'line-color': '#1a6b6b', 'line-width': 3, 'line-dasharray': [2, 2] },
+        });
+      }
+      const bounds = new maplibregl.LngLatBounds();
+      bounds.extend([gtUserLocation.lng, gtUserLocation.lat]);
+      bounds.extend([place.lng, place.lat]);
+      map.fitBounds(bounds, { padding: 60 });
+
+      const distanceKm = gtHaversineKm(gtUserLocation.lat, gtUserLocation.lng, place.lat, place.lng);
+      const estimates = gtEstimateTransport(distanceKm);
+      routePanel.innerHTML = `
+        <p style="margin-top:10px;"><strong>~${distanceKm.toFixed(1)} km</strong> from your location. Estimated (not live pricing):</p>
+        <div class="transport-grid">
+          ${estimates.map(e => `
+            <div class="transport-option">
+              <div>${e.label}</div>
+              <div>${e.fare} FCFA · ${e.minutes} min</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+  </script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+    }
+  </script>
+</body>
+</html>

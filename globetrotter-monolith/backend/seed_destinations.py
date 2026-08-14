@@ -1,6 +1,8 @@
 """
-Regenerates data/destinations.json with the full 58-place Yaoundé
-dataset, including real addresses and ratings.
+Seeds the database with the full 58-place Yaoundé dataset, including
+real addresses and ratings. Idempotent — upserts by id, so it's safe
+to run repeatedly (e.g. after `pytest`, which uses its own isolated
+test database and never touches this one — see tests/test_app.py).
 
 IMPORTANT: this checks for your own local photos FIRST, in
 ../frontend/static/images/places/<id>.jpg (or .jpeg/.png) — if you've
@@ -8,23 +10,13 @@ downloaded and named your own photos there, this script uses them and
 will NEVER overwrite them with a placeholder. Only places with no local
 photo yet get the LoremFlickr placeholder.
 
-Run this any time the file looks wrong or incomplete — most commonly
-after running `pytest`, since the test suite intentionally resets
-this file to a tiny 2-place dataset so tests don't leak state into
-each other (see tests/test_app.py). That's a known
-quirk of using a JSON file as a "database" — running tests wipes the
-real data, and this script is how you get it back, safely, without
-losing any photos you've already added.
-
 Run:
     cd backend
     python seed_destinations.py
 """
-import json
 import os
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_FILE = os.path.join(SCRIPT_DIR, "data.json")
 IMAGES_DIR = os.path.join(SCRIPT_DIR, "..", "frontend", "static", "images", "places")
 VALID_EXTENSIONS = [".jpg", ".jpeg", ".png"]
 
@@ -129,9 +121,18 @@ for i, p in enumerate(places, start=1):
         kw = CATEGORY_KEYWORDS.get(p["category"], "travel")
         p["image_url"] = f"https://loremflickr.com/640/420/{kw}?lock={i}"
 
-os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
-with open(DATA_FILE, "w", encoding="utf-8") as f:
-    json.dump({"users": [], "itineraries": [], "feedback": [], "favorites": [], "destinations": places}, f, indent=2, ensure_ascii=False)
+import database
+from models import Destination
 
-print(f"Wrote {len(places)} places to {DATA_FILE}")
+database.init_db()
+with database.get_session() as session:
+    for p in places:
+        existing = session.get(Destination, p["id"])
+        if existing:
+            for key, value in p.items():
+                setattr(existing, key, value)
+        else:
+            session.add(Destination(**p))
+
+print(f"Seeded {len(places)} places into the database ({database.DATABASE_URL}).")
 print(f"  {local_count} using your local photos, {len(places) - local_count} using placeholders")

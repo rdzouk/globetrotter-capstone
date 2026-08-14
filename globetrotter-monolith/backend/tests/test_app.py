@@ -1,41 +1,65 @@
 """
 End-to-end tests against the Flask test client.
-Each test resets data.json to a clean baseline first so tests don't
-depend on each other or leak state (a real weakness of the JSON-file
-approach that a proper test DB wouldn't have).
+
+Runs against its own isolated, temporary SQLite database — completely
+separate from whatever database the app normally uses (a local
+globetrotter.db, or real Postgres in production). This is the fix for
+the JSON-era bug where running `pytest` would destructively wipe the
+real seed data: tests now can't touch real data even by accident,
+because they're pointed at a throwaway file that gets deleted when
+the test session ends.
 """
-import json
 import os
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+# Both of these MUST be set before `import app` / `import database`,
+# since Flask-Limiter and the SQLAlchemy engine both read env vars once
+# at construction time — setting them later has no effect.
+os.environ["RATELIMIT_ENABLED"] = "false"
+_TEST_DB_FD, _TEST_DB_PATH = tempfile.mkstemp(suffix=".db")
+os.close(_TEST_DB_FD)
+os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB_PATH}"
+
 import pytest
+import database
 import data_access as db
+from models import Destination
 import app as flask_app_module
 
-BASELINE = {
-    "users": [],
-    "itineraries": [],
-    "feedback": [],
-    "destinations": [
-        {"id": 1, "name": "Tassa", "category": "restaurant", "neighborhood": "Bastos",
-         "address": "Bastos, Yaoundé", "lat": 3.8856164, "lng": 11.512473,
-         "rating": 4.3, "rating_count": 189, "price_level": 2, "phone": "+237 6 56 70 65 66",
-         "tags": ["restaurant", "cafe", "casual"], "description": "Garden cafe-restaurant in Bastos."},
-        {"id": 2, "name": "Shu Anta Nlongkak", "category": "spa", "neighborhood": "Nlongkak",
-         "address": "Nlongkak, Yaoundé", "lat": 3.8848691, "lng": 11.5191044,
-         "rating": 4.2, "rating_count": 93, "price_level": None, "phone": "+237 6 99 19 55 46",
-         "tags": ["spa", "relaxation", "affordable"], "description": "Popular spa in Nlongkak."},
-    ],
-}
+BASELINE_DESTINATIONS = [
+    {"id": 1, "name": "Tassa", "category": "restaurant", "neighborhood": "Bastos",
+     "address": "Bastos, Yaoundé", "lat": 3.8856164, "lng": 11.512473,
+     "rating": 4.3, "rating_count": 189, "price_level": 2, "phone": "+237 6 56 70 65 66",
+     "tags": ["restaurant", "cafe", "casual"], "description": "Garden cafe-restaurant in Bastos.",
+     "image_url": "https://loremflickr.com/640/420/restaurant?lock=1"},
+    {"id": 2, "name": "Shu Anta Nlongkak", "category": "spa", "neighborhood": "Nlongkak",
+     "address": "Nlongkak, Yaoundé", "lat": 3.8848691, "lng": 11.5191044,
+     "rating": 4.2, "rating_count": 93, "price_level": None, "phone": "+237 6 99 19 55 46",
+     "tags": ["spa", "relaxation", "affordable"], "description": "Popular spa in Nlongkak.",
+     "image_url": "https://loremflickr.com/640/420/spa?lock=2"},
+]
+
+
+def _reset_database():
+    """Drops and recreates every table, then inserts just the baseline
+    destinations — the SQL equivalent of the old JSON version's
+    db.save(BASELINE), but against the isolated test database only."""
+    from models import Base
+    Base.metadata.drop_all(bind=database.engine)
+    Base.metadata.create_all(bind=database.engine)
+    with database.get_session() as s:
+        for d in BASELINE_DESTINATIONS:
+            s.add(Destination(**d))
 
 
 @pytest.fixture(autouse=True)
 def reset_data():
-    db.save(json.loads(json.dumps(BASELINE)))
+    _reset_database()
     yield
-    db.save(json.loads(json.dumps(BASELINE)))
+    _reset_database()
 
 
 @pytest.fixture
@@ -414,3 +438,17 @@ def test_remove_favorite_not_favorited(client):
 def test_favorites_require_auth(client):
     resp = client.get("/favorites")
     assert resp.status_code == 401
+
+
+# ---- Error handling regression tests ----
+
+def test_unknown_route_returns_404_not_500(client):
+    """The catch-all error handler must not swallow Flask/werkzeug
+    HTTPExceptions (404, 429, etc.) into a generic 500."""
+    resp = client.get("/this-route-does-not-exist")
+    assert resp.status_code == 404
+
+
+def test_wrong_method_returns_405_not_500(client):
+    resp = client.delete("/destinations")  # DELETE isn't defined on this route
+    assert resp.status_code == 405

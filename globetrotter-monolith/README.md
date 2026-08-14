@@ -1,31 +1,58 @@
 # GlobeTrotter Travel Assistant — Yaoundé Edition
 
-**Phase 1 (monolith)** and **Phase 2 (microservices)** both live in
-this repo:
+Production-grade web app for discovering restaurants, spas, hotels,
+and attractions across Yaoundé, Cameroon (58 real venues, 17
+neighborhoods). Web-only — no mobile app.
 
 ```
 globetrotter-monolith/
-├── backend/         # Phase 1 — monolith Flask API (single process)
-├── microservices/   # Phase 2 — same functionality, decomposed into
-│                     #   3 services + an API Gateway — see its own
-│                     #   README.md for architecture, routing table,
-│                     #   and how to run it (Docker Compose or locally)
-├── frontend/        # HTML/CSS/JS web client — works against EITHER
-│                     #   backend, unchanged (both run on port 5000)
-└── mobile/           # Flutter/Dart client (Android/iOS) — see mobile/README.md
+├── frontend/         Static site (HTML/CSS/JS, no build step) — deploy
+│                       to Nginx, Netlify, or any static host
+├── backend/          Flask API — PostgreSQL (SQLite in local dev),
+│                       Redis-backed rate limiting, Gunicorn, Alembic
+│                       migrations. See its own detailed README below.
+├── microservices/    Alternate architecture: same functionality as
+│                       backend/, split into 3 services + a gateway.
+│                       Not the deployment target (see
+│                       ARCHITECTURE_AUDIT.md for why) but fully
+│                       tested and documented — microservices/README.md
+├── nginx/            Reverse proxy config — HTTPS-ready, serves the
+│                       static frontend, proxies /api/ to the backend
+├── docker-compose.yml  Nginx + backend + PostgreSQL + Redis, one command
+├── scripts/           migrate_json_to_postgres.py, backup_db.sh, restore_db.sh
+├── docs/              DEPLOYMENT.md, SECURITY.md, MONITORING.md, BACKUPS.md
+├── .github/workflows/  CI (test + lint + docker build) and deploy
+└── ARCHITECTURE_AUDIT.md   Full audit: problems found, decisions, migration plan
 ```
 
-Both backends expose the identical API on port 5000, so the frontend
-and mobile app work against whichever one you run, with zero code
-changes.
+## Quick start — local development (no Docker)
 
-A single Flask API, personalized to **Yaoundé, Cameroon** (58 real
-venues across 17 neighborhoods).
+```bash
+# Backend
+cd backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+alembic upgrade head            # create the schema (SQLite by default)
+python seed_destinations.py      # load the 58 places
+python app.py                     # http://localhost:5000
 
-The backend is a pure JSON API (CORS-enabled) — it has no idea whether
-it's being called by a browser, a phone, or curl. That separation is
-what let the Flutter app get added without touching a single line of
-Python.
+# Frontend (separate terminal) — any static server works, e.g.:
+cd frontend
+python3 -m http.server 8080      # http://localhost:8080
+```
+
+## Quick start — full production stack (Docker Compose)
+
+```bash
+cp .env.example .env    # fill in real secrets — see docs/DEPLOYMENT.md
+docker compose build
+docker compose run --rm backend alembic upgrade head
+docker compose run --rm backend python seed_destinations.py
+docker compose up -d
+curl http://localhost/health
+```
+
+Full VPS setup (firewall, HTTPS, Cloudflare) in `docs/DEPLOYMENT.md`.
 
 ## What's new in this build
 
@@ -39,7 +66,7 @@ Python.
 - **App feedback**: a separate channel (`POST`/`GET /feedback`) for
   comments and critiques about the app itself, not about a place.
 - **Light/dark mode**: toggle in the nav bar on every web page, and
-  in the Flutter app's Settings tab — persisted per-device.
+  toggle in the nav bar — persisted per-device.
 - **English/French**: language toggle in the web nav bar (persisted).
 - **58 places** now, including Canal Olympia (Yaoundé's main cinema —
   what people often call "the Majestic"), the Cathedral of Our Lady of
@@ -62,10 +89,6 @@ Python.
 - **Weekly planner**: a new Planner page lays your itineraries out as
   a Monday–Sunday timetable, using an optional `time_slot` field you
   can set when booking (e.g. "09:00–11:00").
-- **Flutter mobile app**: full client in `mobile/` — see its README
-  for setup. Note: the newest features above (live location, transport
-  estimates, nearby places, area info, planner, language toggle) are
-  currently web-only — see `mobile/README.md` for the parity checklist.
 
 ## Quick start (backend)
 
@@ -77,33 +100,6 @@ pytest -q            # 23 tests
 python app.py          # http://localhost:5000
 ```
 
-## Quick start (web frontend)
-
-```bash
-cd frontend
-python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-python serve.py       # http://localhost:5173
-```
-
-This is a tiny, separate Flask app (`serve.py`) whose only job is
-rendering the HTML templates — it has no business logic and never
-touches `data.json`. Every page's JavaScript calls the real backend
-directly using `API_BASE_URL` (set in `static/app.js`, defaults to
-`http://localhost:5000`) — change that if your backend runs elsewhere.
-
-## Quick start (mobile)
-
-```bash
-cd mobile
-flutter pub get
-flutter run
-```
-
-**Read `mobile/README.md` first** — the backend URL you configure
-depends on whether you're using an emulator or a real phone.
-
-
 
 ## Architecture
 
@@ -114,7 +110,8 @@ Browser (HTML/JS pages) → API (Flask routes, app.py)
 Auth (auth.py) — password hashing + JWT issue/verify, used by the API layer
 ```
 
-The frontend is plain server-rendered HTML (Jinja templates) plus
+The frontend is a plain static site (no build step, no server-side
+rendering) plus
 vanilla JS in `static/app.js` that calls the same JSON API endpoints
 you'd hit with curl. The JWT is stored in the browser's `localStorage`
 after login and sent as `Authorization: Bearer <token>` on every
@@ -150,7 +147,6 @@ globetrotter-monolith/
 ├── business_logic.py   # Search, recommendation scoring, validation
 ├── data_access.py      # Thread-safe JSON file read/write
 ├── data.json             # The "database" — seeded with 12 destinations
-├── templates/           # Jinja HTML pages (base.html + one per page)
 ├── static/
 │   ├── style.css        # Page styling
 │   └── app.js            # Nav state + booking modal, shared by every page
@@ -305,9 +301,7 @@ with your own key/billing; ask if you want that wired in.
 
 **Mobile app wasn't updated with this round** — live location, the
 route builder, favorites, clickable tags, book-again, and the profile
-page are currently web-only. Porting all of that to Flutter/Dart
-safely (given I can't compile-test it here) is its own multi-step
-project — happy to start on it next, one screen at a time.
+This is a web-only application; there is no mobile app to keep in sync.
 
 ## API Reference
 

@@ -19,7 +19,7 @@
       ],
       "description": "Bright garden cafe-restaurant in Bastos with a glass roof, coffee bar, and occasional live jazz nights.",
       "id": 1,
-      "image_url": "/static/images/places/1.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=1"
     },
     {
       "name": "Complexe le sims",
@@ -40,7 +40,7 @@
       ],
       "description": "Open-air sports-bar-style restaurant in Bastos, popular for drinks and casual hangouts.",
       "id": 2,
-      "image_url": "/static/images/places/2.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=2"
     },
     {
       "name": "Seven Hills",
@@ -60,7 +60,7 @@
       ],
       "description": "Cozy pizzeria and grill near Carrefour PJ known for its wood-fired pizza and generous portions.",
       "id": 3,
-      "image_url": "/static/images/places/3.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=3"
     },
     {
       "name": "L'HYBRIDE",
@@ -81,7 +81,7 @@
       ],
       "description": "Stylish Bastos restaurant with a lush garden setting, indoor/outdoor seating, and a cocktail menu.",
       "id": 4,
-      "image_url": "/static/images/places/4.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=4"
     },
     {
       "name": "continent 237",
@@ -102,7 +102,7 @@
       ],
       "description": "Upscale fine-dining spot on the Bastos strip with an elegant interior and live music evenings.",
       "id": 5,
-      "image_url": "/static/images/places/5.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=5"
     },
     {
       "name": "Cosy Pool",
@@ -123,7 +123,7 @@
       ],
       "description": "French-inspired restaurant built around a quiet poolside terrace, popular for romantic dinners.",
       "id": 6,
-      "image_url": "/static/images/places/6.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=6"
     },
     {
       "name": "Socrat Restaurant",
@@ -144,7 +144,7 @@
       ],
       "description": "Long-running Lebanese restaurant in Bastos with a large buffet and shisha lounge.",
       "id": 7,
-      "image_url": "/static/images/places/7.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=7"
     },
     {
       "name": "Route 66 Bar & Grill",
@@ -165,7 +165,7 @@
       ],
       "description": "American-style bar and grill in Bastos, open late with indoor bar and outdoor seating.",
       "id": 8,
-      "image_url": "/static/images/places/8.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=8"
     },
     {
       "name": "The Famous",
@@ -186,7 +186,7 @@
       ],
       "description": "One of Yaoundé's most talked-about restaurants — elegant decor, sushi, and an extensive dessert buffet.",
       "id": 9,
-      "image_url": "/static/images/places/9.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=9"
     },
     {
       "name": "Mahima Restaurant",
@@ -206,7 +206,7 @@
       ],
       "description": "Spacious Indian restaurant known for its naan and butter chicken, tucked just off the main road.",
       "id": 10,
-      "image_url": "/static/images/places/10.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=10"
     },
     {
       "name": "Le Safoutier Restaurant",
@@ -227,7 +227,7 @@
       ],
       "description": "The Hilton's signature restaurant, blending French and local cuisine with a weekend poolside buffet.",
       "id": 11,
-      "image_url": "/static/images/places/11.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=11"
     },
     {
       "name": "Kennys Great House",
@@ -247,7 +247,7 @@
       ],
       "description": "24-hour restaurant and guesthouse in Bastos serving pizza, grilled chicken, and local dishes.",
       "id": 12,
-      "image_url": "/static/images/places/12.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=12"
     },
     {
       "name": "Chez Wou",
@@ -267,7 +267,7 @@
       ],
       "description": "A Bastos institution for Chinese food, with a shaded outdoor terrace and kids' play area.",
       "id": 13,
-      "image_url": "/static/images/places/13.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=13"
     },
     {
       "name": "La Marmite Du Boulevard",
@@ -287,7 +287,7 @@
       ],
       "description": "Relaxed hotel restaurant on the Boulevard du 20 Mai, popular for a calm sit-down meal.",
       "id": 14,
-      "image_url": "/static/images/places/14.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=14"
     },
     {
       "name": "Le Moulin de France",
@@ -308,7 +308,7 @@
       ],
       "description": "Well-known French bakery-restaurant chain with fresh pastries and a cozy upstairs lounge.",
       "id": 15,
-      "image_url": "/static/images/places/15.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=15"
     },
     {
       "name": "La Cantine",
@@ -329,7 +329,7 @@
       ],
       "description": "Relaxed Hippodrome restaurant-bar with a backyard screen for sports and a foosball table.",
       "id": 16,
-      "image_url": "/static/images/places/16.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=16"
     },
     {
       "name": "La Terrasse",
@@ -349,7 +349,7 @@
       ],
       "description": "Quiet, greenery-filled restaurant in Hippodrome known for classic music and a calm ambiance.",
       "id": 17,
-      "image_url": "/static/images/places/17.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=17"
     },
     {
       "name": "Blue Nile",
@@ -369,7 +369,7 @@
       ],
       "description": "Serene Hippodrome restaurant with a wide menu, popular for business lunches.",
       "id": 18,
-      "image_url": "/static/images/places/18.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=18"
     },
     {
       "name": "Restaurant Le Carnivore",
@@ -389,7 +389,7 @@
       ],
       "description": "Beef-focused grill house in Hippodrome with an extensive wine list and live singers some evenings.",
       "id": 19,
-      "image_url": "/static/images/places/19.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=19"
     },
     {
       "name": "Bar Restaurant la Cachette d'Essos",
@@ -409,7 +409,7 @@
       ],
       "description": "Discreet neighborhood restaurant in Essos with a loyal local following.",
       "id": 20,
-      "image_url": "/static/images/places/20.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=20"
     },
     {
       "name": "LE RHUMSIKI",
@@ -429,7 +429,7 @@
       ],
       "description": "Local Cameroonian restaurant near Olembe featuring traditional balafon music.",
       "id": 21,
-      "image_url": "/static/images/places/21.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=21"
     },
     {
       "name": "CRUSH",
@@ -449,7 +449,7 @@
       ],
       "description": "Small, well-liked Bastos restaurant known for good value and tasty dishes.",
       "id": 22,
-      "image_url": "/static/images/places/22.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=22"
     },
     {
       "name": "O'mba'p Lounge",
@@ -469,7 +469,7 @@
       ],
       "description": "Chic Bastos lounge-restaurant with attentive service, a favorite for evening get-togethers.",
       "id": 23,
-      "image_url": "/static/images/places/23.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=23"
     },
     {
       "name": "KAIS Lounge",
@@ -490,7 +490,7 @@
       ],
       "description": "Popular Nlongkak lounge for lunch, dinner, and celebrations, with a lively weekend crowd.",
       "id": 24,
-      "image_url": "/static/images/places/24.jpg"
+      "image_url": "https://loremflickr.com/640/420/restaurant,dining?lock=24"
     },
     {
       "name": "Yaounde Multipurpose Sports Complex",
@@ -511,7 +511,7 @@
       ],
       "description": "Large multi-sport venue hosting table tennis, athletics, and community sporting events.",
       "id": 25,
-      "image_url": "/static/images/places/25.jpg"
+      "image_url": "https://loremflickr.com/640/420/gym,fitness?lock=25"
     },
     {
       "name": "Complexe Fit For All",
@@ -531,7 +531,7 @@
       ],
       "description": "Highly-rated Odza fitness center offering a full range of workout equipment and classes.",
       "id": 26,
-      "image_url": "/static/images/places/26.jpg"
+      "image_url": "https://loremflickr.com/640/420/gym,fitness?lock=26"
     },
     {
       "name": "Complexe Sportif La Fusion des Champions",
@@ -551,7 +551,7 @@
       ],
       "description": "Fitness complex with on-site coaches for strength training and general fitness goals.",
       "id": 27,
-      "image_url": "/static/images/places/27.jpg"
+      "image_url": "https://loremflickr.com/640/420/gym,fitness?lock=27"
     },
     {
       "name": "Complexe Immo_Fitness_Club",
@@ -571,7 +571,7 @@
       ],
       "description": "Well-equipped Ngousso gym paired with an apartment complex.",
       "id": 28,
-      "image_url": "/static/images/places/28.jpg"
+      "image_url": "https://loremflickr.com/640/420/gym,fitness?lock=28"
     },
     {
       "name": "Complexe Fusion Fitness Club",
@@ -592,7 +592,7 @@
       ],
       "description": "Multipurpose sports club offering fitness, judo, and dance classes, plus an on-site barbershop.",
       "id": 29,
-      "image_url": "/static/images/places/29.jpg"
+      "image_url": "https://loremflickr.com/640/420/gym,fitness?lock=29"
     },
     {
       "name": "Complexe Sportif FMA",
@@ -612,7 +612,7 @@
       ],
       "description": "Quiet, focused gym space good for uninterrupted training sessions.",
       "id": 30,
-      "image_url": "/static/images/places/30.jpg"
+      "image_url": "https://loremflickr.com/640/420/gym,fitness?lock=30"
     },
     {
       "name": "Wellnessspa",
@@ -632,7 +632,7 @@
       ],
       "description": "Small neighborhood beauty and wellness spa near Ngousso general hospital.",
       "id": 31,
-      "image_url": "/static/images/places/31.jpg"
+      "image_url": "https://loremflickr.com/640/420/spa,massage?lock=31"
     },
     {
       "name": "Shu Anta Nlongkak",
@@ -653,7 +653,7 @@
       ],
       "description": "Popular Nlongkak spa offering massages, hammam, and body treatments at accessible prices.",
       "id": 32,
-      "image_url": "/static/images/places/32.jpg"
+      "image_url": "https://loremflickr.com/640/420/spa,massage?lock=32"
     },
     {
       "name": "O'CHIC BEAUTY & SPA",
@@ -674,7 +674,7 @@
       ],
       "description": "Elegant Bastos beauty salon and spa with top-rated hair and wellness services.",
       "id": 33,
-      "image_url": "/static/images/places/33.jpg"
+      "image_url": "https://loremflickr.com/640/420/spa,massage?lock=33"
     },
     {
       "name": "Institut Le nid doux spa et Bien-être",
@@ -693,7 +693,7 @@
       ],
       "description": "Neighborhood wellness institute offering spa and beauty treatments in Mvan.",
       "id": 34,
-      "image_url": "/static/images/places/34.jpg"
+      "image_url": "https://loremflickr.com/640/420/spa,massage?lock=34"
     },
     {
       "name": "Saiilama Academy Spa",
@@ -714,7 +714,7 @@
       ],
       "description": "Upscale, appointment-only spa with premium natural products, open to men and women.",
       "id": 35,
-      "image_url": "/static/images/places/35.jpg"
+      "image_url": "https://loremflickr.com/640/420/spa,massage?lock=35"
     },
     {
       "name": "Relax Space",
@@ -734,7 +734,7 @@
       ],
       "description": "Small Bastos-area salon offering massage and basic beauty services.",
       "id": 36,
-      "image_url": "/static/images/places/36.jpg"
+      "image_url": "https://loremflickr.com/640/420/spa,massage?lock=36"
     },
     {
       "name": "Bambou Lounge",
@@ -754,7 +754,7 @@
       ],
       "description": "Spacious Hippodrome nightclub known for open-air events and DJ sets.",
       "id": 37,
-      "image_url": "/static/images/places/37.jpg"
+      "image_url": "https://loremflickr.com/640/420/nightclub,bar?lock=37"
     },
     {
       "name": "Sanza Night Club",
@@ -775,7 +775,7 @@
       ],
       "description": "One of Yaoundé's best-known nightclubs, with a piano bar and grilled snacks outside.",
       "id": 38,
-      "image_url": "/static/images/places/38.jpg"
+      "image_url": "https://loremflickr.com/640/420/nightclub,bar?lock=38"
     },
     {
       "name": "Duchess Lounge",
@@ -795,7 +795,7 @@
       ],
       "description": "Biyem-Assi lounge with a resident DJ, restaurant menu, and secured parking.",
       "id": 39,
-      "image_url": "/static/images/places/39.jpg"
+      "image_url": "https://loremflickr.com/640/420/nightclub,bar?lock=39"
     },
     {
       "name": "Wave Night Club",
@@ -814,7 +814,7 @@
       ],
       "description": "Late-night club in the city center, busiest after 2am.",
       "id": 40,
-      "image_url": "/static/images/places/40.jpg"
+      "image_url": "https://loremflickr.com/640/420/nightclub,bar?lock=40"
     },
     {
       "name": "XO NIGHT CLUB",
@@ -834,7 +834,7 @@
       ],
       "description": "Well-managed city-center nightclub known for good security and service.",
       "id": 41,
-      "image_url": "/static/images/places/41.jpg"
+      "image_url": "https://loremflickr.com/640/420/nightclub,bar?lock=41"
     },
     {
       "name": "The Rooftop Yaoundé",
@@ -855,7 +855,7 @@
       ],
       "description": "Rooftop bar and restaurant with panoramic city views, popular for evening drinks.",
       "id": 42,
-      "image_url": "/static/images/places/42.jpg"
+      "image_url": "https://loremflickr.com/640/420/nightclub,bar?lock=42"
     },
     {
       "name": "Hilton Yaounde",
@@ -876,7 +876,7 @@
       ],
       "description": "Yaoundé's landmark international hotel, centrally located with multiple restaurants and a rooftop bar.",
       "id": 43,
-      "image_url": "/static/images/places/43.jpg"
+      "image_url": "https://loremflickr.com/640/420/hotel,lobby?lock=43"
     },
     {
       "name": "Hôtel Suzanne Nel.C Lounge",
@@ -896,7 +896,7 @@
       ],
       "description": "Small, highly-rated Odza hotel known for cleanliness and a warm welcome.",
       "id": 44,
-      "image_url": "/static/images/places/44.jpg"
+      "image_url": "https://loremflickr.com/640/420/hotel,lobby?lock=44"
     },
     {
       "name": "Riad Prince Louis",
@@ -917,7 +917,7 @@
       ],
       "description": "Boutique riad-style guesthouse in the city center with a calming garden setting.",
       "id": 45,
-      "image_url": "/static/images/places/45.jpg"
+      "image_url": "https://loremflickr.com/640/420/hotel,lobby?lock=45"
     },
     {
       "name": "La Falaise Hotel",
@@ -938,7 +938,7 @@
       ],
       "description": "Well-known central hotel with a gym, pool, restaurant, and event hall.",
       "id": 46,
-      "image_url": "/static/images/places/46.jpg"
+      "image_url": "https://loremflickr.com/640/420/hotel,lobby?lock=46"
     },
     {
       "name": "larochelle hôtel Yaoundé",
@@ -957,7 +957,7 @@
       ],
       "description": "Comfortable, accessible hotel in Mimboman with a range of food options.",
       "id": 47,
-      "image_url": "/static/images/places/47.jpg"
+      "image_url": "https://loremflickr.com/640/420/hotel,lobby?lock=47"
     },
     {
       "name": "STAR LAND HOTEL BASTOS",
@@ -977,7 +977,7 @@
       ],
       "description": "Modern upscale hotel in Bastos, popular for its restaurant and central location.",
       "id": 48,
-      "image_url": "/static/images/places/48.jpg"
+      "image_url": "https://loremflickr.com/640/420/hotel,lobby?lock=48"
     },
     {
       "name": "Djeuga Palace",
@@ -998,7 +998,7 @@
       ],
       "description": "Four-star city-center hotel near Yaoundé Central Market, with a basement nightclub and casino.",
       "id": 49,
-      "image_url": "/static/images/places/49.jpg"
+      "image_url": "https://loremflickr.com/640/420/hotel,lobby?lock=49"
     },
     {
       "name": "Eco Park",
@@ -1019,7 +1019,7 @@
       ],
       "description": "Green eco-tourism park with a small zoo, museum, and restaurant setting.",
       "id": 50,
-      "image_url": "/static/images/places/50.jpg"
+      "image_url": "https://loremflickr.com/640/420/park,outdoor?lock=50"
     },
     {
       "name": "NATURO PARC",
@@ -1041,7 +1041,7 @@
       ],
       "description": "Floral park near the airport offering woodland walks, a pool, gym, and picnic spots.",
       "id": 51,
-      "image_url": "/static/images/places/51.jpg"
+      "image_url": "https://loremflickr.com/640/420/park,outdoor?lock=51"
     },
     {
       "name": "I Love My Country Cameroon Round About",
@@ -1061,7 +1061,7 @@
       ],
       "description": "A striking sculptural monument in the city center, popular for photos in the evening.",
       "id": 52,
-      "image_url": "/static/images/places/52.jpg"
+      "image_url": "https://loremflickr.com/640/420/park,outdoor?lock=52"
     },
     {
       "name": "Municipal Lake",
@@ -1082,7 +1082,7 @@
       ],
       "description": "One of the city's only green lakeside spaces, free to enter and popular at sunset.",
       "id": 53,
-      "image_url": "/static/images/places/53.jpg"
+      "image_url": "https://loremflickr.com/640/420/park,outdoor?lock=53"
     },
     {
       "name": "Village Madiba",
@@ -1104,7 +1104,7 @@
       ],
       "description": "Peaceful nature retreat near Soa dedicated to Mandela, with fishing and picnic areas.",
       "id": 54,
-      "image_url": "/static/images/places/54.jpg"
+      "image_url": "https://loremflickr.com/640/420/park,outdoor?lock=54"
     },
     {
       "name": "Lions International Place",
@@ -1125,7 +1125,7 @@
       ],
       "description": "Small public park in the city center, a quiet spot for a short break.",
       "id": 55,
-      "image_url": "/static/images/places/55.jpg"
+      "image_url": "https://loremflickr.com/640/420/park,outdoor?lock=55"
     },
     {
       "name": "PlaYce Yaoundé",
@@ -1146,7 +1146,7 @@
       ],
       "description": "Yaoundé's modern shopping mall in Warda, with a supermarket, boutiques, an arcade, and a kids' playground.",
       "id": 56,
-      "image_url": "/static/images/places/56.jpg"
+      "image_url": "https://loremflickr.com/640/420/park,outdoor?lock=56"
     },
     {
       "name": "Canal Olympia (Majestic Cinema)",
@@ -1166,7 +1166,7 @@
       ],
       "description": "Yaoundé's main modern cinema, on the University of Yaoundé I campus, with food stalls around the entrance.",
       "id": 57,
-      "image_url": "/static/images/places/57.jpg"
+      "image_url": "https://loremflickr.com/640/420/cinema,movietheater?lock=57"
     },
     {
       "name": "La Cathédrale (Notre-Dame des Victoires)",
@@ -1187,7 +1187,7 @@
       ],
       "description": "Yaoundé's landmark cathedral at Poste Centrale, known for its cross-shaped architecture and stained glass.",
       "id": 58,
-      "image_url": "/static/images/places/58.jpg"
+      "image_url": "https://loremflickr.com/640/420/cathedral,church?lock=58"
     }
   ]
 }

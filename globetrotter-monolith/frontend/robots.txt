@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /profile.html
+Disallow: /favorites.html
+Disallow: /itineraries.html
+Disallow: /planner.html
+Disallow: /feedback.html
+
+Sitemap: https://globetrotter.example.com/sitemap.xml

@@ -491,3 +491,39 @@ button.secondary:hover { background: #7c7c79; }
   overflow: hidden;
   box-shadow: 0 4px 16px rgba(0,0,0,0.12);
 }
+
+/* ---- Accessibility ---- */
+
+/* Visible focus states on every interactive element — never remove
+   the outline without replacing it with something equally visible. */
+a:focus-visible, button:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+  outline: 3px solid #ff9a5c;
+  outline-offset: 2px;
+}
+
+/* Skip-to-content link — invisible until keyboard-focused, then jumps
+   straight past the nav to the main content. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: #1a6b6b;
+  color: white;
+  padding: 12px 20px;
+  z-index: 1000;
+  border-radius: 0 0 8px 0;
+}
+.skip-link:focus {
+  left: 0;
+}
+
+/* Respect the user's OS-level reduced-motion preference. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
