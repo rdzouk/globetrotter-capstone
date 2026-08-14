@@ -4,16 +4,43 @@
       "name": "FOSSOUO KENGNE GAETAN",
       "email": "fkengnegaetan@gmail.com",
       "phone": null,
-      "password_hash": "scrypt:32768:8:1$BWhF9qZWitYk7bam$e91aa621d3e84249df470ff43b303173c9b6496f0fbdbe12e8cbdb7b4cd59fa66d85e28245836018a736d589735100095f61d623e82e2cdfeae60b7bfb41a7c1",
+      "password_hash": "scrypt:32768:8:1$3ChBWy3BxUOw0IHq$6e88e7a80034b44195ce76e4716b21ea2dcd8e73d227d6d9d9195b637ce2c478477f9871a072652df2bd66e528c047bc781fc5509596bd91c91e7f90ba8b431f",
       "preferences": [
-        "affordable",
-        "spa",
+        "restaurant",
+        "nightlife",
         "hotel"
       ],
       "id": 1
     }
   ],
-  "itineraries": [],
+  "itineraries": [
+    {
+      "user_id": 1,
+      "destination_id": 5,
+      "start_date": "2026-08-13",
+      "end_date": "2026-08-18",
+      "notes": "",
+      "time_slot": "17-20",
+      "transport_mode": "",
+      "shared_with": [],
+      "visited": false,
+      "review": null,
+      "id": 1
+    },
+    {
+      "user_id": 1,
+      "destination_id": 9,
+      "start_date": "2026-08-12",
+      "end_date": "2026-08-18",
+      "notes": "",
+      "time_slot": "",
+      "transport_mode": "yango",
+      "shared_with": [],
+      "visited": false,
+      "review": null,
+      "id": 2
+    }
+  ],
   "feedback": [],
   "favorites": [],
   "destinations": [
