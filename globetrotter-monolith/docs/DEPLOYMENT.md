@@ -7,6 +7,29 @@
 - A domain pointed at the VPS (for HTTPS)
 - Optional: Cloudflare in front, for DNS/WAF/CDN (see the "Cloudflare" section below)
 
+### Contabo-specific notes
+
+Contabo VPS instances ship with Ubuntu pre-installed but **no cloud
+firewall in front by default** (unlike some providers where the
+platform firewall is a separate layer) — the VPS's own `ufw` rules
+(set up below) are your actual first line of defense here, not
+optional. A few Contabo specifics:
+
+- **Root login by default**: Contabo emails you root credentials
+  directly. Create a non-root sudo user immediately and disable root
+  SSH login (covered in the SSH hardening step below) — don't run
+  Docker as root long-term.
+- **Reverse DNS / hostname**: Contabo's default hostname is often
+  something like `vmiXXXXXX.contaboserver.net`. This doesn't affect
+  functionality but if you want clean `hostname`/mail-sending
+  behavior later, set it via their control panel.
+- **IPv6**: Contabo VPS plans typically include a /64 IPv6 block. Not
+  required for this app, but if you point AAAA records at it too,
+  make sure `ufw` rules apply to IPv6 as well (they do by default on
+  modern Ubuntu, just worth confirming with `ufw status verbose`).
+- Everything else below (Docker install, firewall, HTTPS, deploy) is
+  standard Ubuntu LTS and needs no Contabo-specific changes.
+
 ## First-time VPS setup
 
 ```bash

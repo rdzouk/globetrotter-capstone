@@ -6,8 +6,8 @@ neighborhoods). Web-only — no mobile app.
 
 ```
 globetrotter-monolith/
-├── frontend/         Static site (HTML/CSS/JS, no build step) — deploy
-│                       to Nginx, Netlify, or any static host
+├── frontend/         Static site (HTML/CSS/JS, no build step) — served
+│                       directly by Nginx (see nginx/nginx.conf)
 ├── backend/          Flask API — PostgreSQL (SQLite in local dev),
 │                       Redis-backed rate limiting, Gunicorn, Alembic
 │                       migrations. See its own detailed README below.
@@ -38,7 +38,7 @@ python app.py                     # http://localhost:5000
 
 # Frontend (separate terminal) — any static server works, e.g.:
 cd frontend
-python3 -m http.server 8080      # http://localhost:8080
+python3 serve_local.py          # http://localhost:8080 — no dependencies, one command
 ```
 
 ## Quick start — full production stack (Docker Compose)

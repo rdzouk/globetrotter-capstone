@@ -2,7 +2,7 @@
  * Injects the shared navbar and booking modal into every page.
  *
  * This is a static-site replacement for what used to be Jinja's
- * {% extends "base.html" %} template inheritance. Since Netlify (and
+ * {% extends "base.html" %} template inheritance. Since Nginx (and other
  * static hosts generally) can't run server-side templating, each page
  * is a plain, self-contained HTML file with two empty placeholder
  * divs — id="navbar-placeholder" and id="modal-placeholder" — and
