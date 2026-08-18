@@ -11,6 +11,16 @@ Behavior differs by APP_ENV:
     for the audit's Critical Problem #4 (hardcoded JWT secret fallback).
 """
 import os
+from dotenv import load_dotenv
+
+# `python app.py` (what these docs tell you to run) does NOT
+# auto-load .env the way `flask run` sometimes does — without this
+# line, anything you put in .env was silently ignored and the app
+# always fell back to the dev defaults below, which can look like a
+# random inconsistency (e.g. a token signed by one run failing
+# validation on another) if you ever DID set a real JWT_SECRET
+# in .env expecting it to take effect.
+load_dotenv()
 
 APP_ENV = os.environ.get("APP_ENV", "development")
 IS_PRODUCTION = APP_ENV == "production"

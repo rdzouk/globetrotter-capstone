@@ -34,7 +34,7 @@ import business_logic as logic
 
 database.init_db()
 
-logging.basicConfig(level=config.LOG_LEVEL, format="%(asctime)s %(levelname)s  %(message)s")
+logging.basicConfig(level=config.LOG_LEVEL, format="%(asctime)s %(levelname)s [%(request_id)s] %(message)s")
 
 
 class _RequestIdFilter(logging.Filter):
