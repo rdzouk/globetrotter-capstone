@@ -196,9 +196,10 @@
       panel.classList.remove('hidden');
 
       const stars = '⭐'.repeat(Math.round(place.rating));
+      const imageUrl = place.image_url.startsWith('http') ? place.image_url : `${API_BASE_URL}${place.image_url}`;
       panel.innerHTML = `
         <button class="secondary" onclick="deselectPlace()" style="margin-bottom:8px;">← Back</button>
-        <img class="place-image" src="${place.image_url}" alt="${place.name}">
+        <img class="place-image" src="${imageUrl}" alt="${place.name}" onerror="this.src='https://via.placeholder.com/300?text=${encodeURIComponent(place.name)}';">
         <h2>${place.name} ${gtHeartHtml(place.id)}</h2>
         <span class="category-badge category-${place.category}">${place.category}</span>
         ${place.tags.map(t => `<span class="tag">${t}</span>`).join(' ')}
@@ -240,34 +241,82 @@
       if (map.getSource('route-line')) map.removeSource('route-line');
     }
 
-    function renderRoute(place) {
+    async function renderRoute(place) {
       const routePanel = document.getElementById('route-panel');
       if (!gtUserLocation) {
         routePanel.innerHTML = '<p class="muted" style="font-size:0.85rem;">Turn on "Use my location" above to get a route and fare/time estimate.</p>';
         return;
       }
+
+      routePanel.innerHTML = '<p class="muted" style="font-size:0.85rem;">📍 Loading route...</p>';
+
+      // Try to get real routing from OSRM (Open Source Routing Machine)
+      let routeCoordinates = [[gtUserLocation.lng, gtUserLocation.lat], [place.lng, place.lat]];
+      let distanceKm = gtHaversineKm(gtUserLocation.lat, gtUserLocation.lng, place.lat, place.lng);
+      let routeFound = false;
+      
+      try {
+        // OSRM endpoint - car routing
+        const osrmUrl = `https://router.project-osrm.org/route/v1/car/${gtUserLocation.lng},${gtUserLocation.lat};${place.lng},${place.lat}?geometries=geojson&overview=full`;
+        
+        const res = await fetch(osrmUrl, { 
+          method: 'GET',
+          headers: { 'Accept': 'application/json' }
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          console.log('OSRM Response:', data);
+          
+          if (data.routes && data.routes.length > 0) {
+            const route = data.routes[0];
+            if (route.geometry && route.geometry.coordinates) {
+              routeCoordinates = route.geometry.coordinates;
+              distanceKm = route.distance / 1000; // Convert from meters to km
+              routeFound = true;
+              console.log('✓ Real route loaded:', distanceKm.toFixed(1), 'km');
+            }
+          }
+        } else {
+          console.warn('OSRM returned:', res.status);
+        }
+      } catch (err) {
+        console.warn('OSRM request failed:', err.message);
+      }
+
       const lineGeoJSON = {
         type: 'Feature',
-        geometry: { type: 'LineString', coordinates: [[gtUserLocation.lng, gtUserLocation.lat], [place.lng, place.lat]] },
+        geometry: { type: 'LineString', coordinates: routeCoordinates },
       };
+      
       if (map.getSource('route-line')) {
         map.getSource('route-line').setData(lineGeoJSON);
       } else {
         map.addSource('route-line', { type: 'geojson', data: lineGeoJSON });
         map.addLayer({
           id: 'route-line', type: 'line', source: 'route-line',
-          paint: { 'line-color': '#1a6b6b', 'line-width': 3, 'line-dasharray': [2, 2] },
+          paint: { 
+            'line-color': routeFound ? '#00a8e8' : '#1a6b6b',
+            'line-width': 4, 
+            'line-dasharray': [5, 3],
+            'line-cap': 'round',
+            'line-join': 'round'
+          },
         });
       }
+      
       const bounds = new maplibregl.LngLatBounds();
       bounds.extend([gtUserLocation.lng, gtUserLocation.lat]);
       bounds.extend([place.lng, place.lat]);
-      map.fitBounds(bounds, { padding: 60 });
+      
+      // Add buffer for intermediate route points
+      routeCoordinates.forEach(coord => bounds.extend(coord));
+      map.fitBounds(bounds, { padding: 80 });
 
-      const distanceKm = gtHaversineKm(gtUserLocation.lat, gtUserLocation.lng, place.lat, place.lng);
       const estimates = gtEstimateTransport(distanceKm);
       routePanel.innerHTML = `
-        <p style="margin-top:10px;"><strong>~${distanceKm.toFixed(1)} km</strong> from your location. Estimated (not live pricing):</p>
+        <p style="margin-top:10px;"><strong>~${distanceKm.toFixed(1)} km</strong> from your location ${routeFound ? '(via roads)' : '(straight line)'}</p>
+        <p class="muted" style="font-size:0.85rem;">Estimated (not live pricing):</p>
         <div class="transport-grid">
           ${estimates.map(e => `
             <div class="transport-option">
