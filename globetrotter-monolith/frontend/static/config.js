@@ -10,7 +10,7 @@
  * origin/CORS setup to worry about — just use a relative path:
  *   window.GT_API_BASE_URL = "/api";
  */
-window.GT_API_BASE_URL = "http://localhost:5000";
+// window.GT_API_BASE_URL = "http://localhost:5000";  // Development
 
-// Production (uncomment when deploying behind the included Nginx config):
-// window.GT_API_BASE_URL = "/api";
+// Production (behind Nginx on gaeglobetrotter.duckdns.org):
+window.GT_API_BASE_URL = "/api";
