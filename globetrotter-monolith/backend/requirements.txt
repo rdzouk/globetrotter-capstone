@@ -1,6 +1,7 @@
 Flask==3.0.3
 Flask-Cors==4.0.1
 Flask-Limiter==3.8.0
+redis==5.0.8
 PyJWT==2.9.0
 Werkzeug==3.0.4
 python-dotenv==1.0.1
