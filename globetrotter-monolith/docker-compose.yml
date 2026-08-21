@@ -24,6 +24,8 @@ services:
     # the "internal services must NOT be publicly exposed" rule.
     expose:
       - "5000"
+    volumes:
+      - ./frontend/static/images/places:/frontend/static/images/places:ro
     environment:
       APP_ENV: production
       JWT_SECRET: ${JWT_SECRET}
