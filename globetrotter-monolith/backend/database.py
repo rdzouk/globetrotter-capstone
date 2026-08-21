@@ -12,7 +12,7 @@ file's per-call load()/save().
 import os
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 import config
@@ -39,6 +39,15 @@ def init_db():
     deployments should use Alembic migrations (see migrations/)
     instead of relying on this for schema changes after the first
     deploy."""
+    if DATABASE_URL.startswith("postgresql"):
+        # Gunicorn imports the app in several workers at once. Serialize
+        # first-start schema creation so concurrent create_all calls cannot
+        # race inside PostgreSQL's system catalogs.
+        with engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock(29467)"))
+            Base.metadata.create_all(bind=connection)
+        return
+
     Base.metadata.create_all(bind=engine)
 
 
