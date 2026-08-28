@@ -36,6 +36,14 @@
         <option value="attraction">Attractions &amp; parks</option>
         <option value="entertainment">Entertainment &amp; cinema</option>
         <option value="landmark">Landmarks</option>
+        <option value="hospital">Hospitals</option>
+        <option value="school">Schools</option>
+        <option value="lake">Lakes</option>
+        <option value="worship">Worship</option>
+        <option value="market">Markets</option>
+        <option value="government">Government</option>
+        <option value="nature">Nature</option>
+        <option value="transport">Transport</option>
       </select>
       <button id="map-search-btn">Search</button>
       <button id="map-locate-btn" class="secondary">📍 Use my location (live)</button>
@@ -64,7 +72,9 @@
   <script>
     const categoryColors = {
       restaurant: '#c0392b', sports: '#2980b9', spa: '#8e44ad', nightlife: '#d35400',
-      hotel: '#16a085', attraction: '#27ae60', entertainment: '#f39c12', landmark: '#34495e'
+      hotel: '#16a085', attraction: '#27ae60', entertainment: '#f39c12', landmark: '#34495e',
+      hospital: '#e74c3c', school: '#3498db', lake: '#1abc9c', worship: '#9b59b6',
+      market: '#e67e22', government: '#7f8c8d', nature: '#2ecc71', transport: '#34495e'
     };
 
     const map = new maplibregl.Map({
@@ -116,6 +126,14 @@
             'attraction', categoryColors.attraction,
             'entertainment', categoryColors.entertainment,
             'landmark', categoryColors.landmark,
+            'hospital', categoryColors.hospital,
+            'school', categoryColors.school,
+            'lake', categoryColors.lake,
+            'worship', categoryColors.worship,
+            'market', categoryColors.market,
+            'government', categoryColors.government,
+            'nature', categoryColors.nature,
+            'transport', categoryColors.transport,
             '#555',
           ],
           'circle-stroke-width': 2,
@@ -199,13 +217,9 @@
       const imageUrl = place.image_url.startsWith('http') ? place.image_url : `${API_BASE_URL}${place.image_url}`;
       panel.innerHTML = `
         <button class="secondary" onclick="deselectPlace()" style="margin-bottom:8px;">← Back</button>
-<<<<<<< HEAD
-        <img class="place-image" src="${imageUrl}" alt="${place.name}" onerror="this.src='https://via.placeholder.com/300?text=${encodeURIComponent(place.name)}';">
-=======
         <div class="card-image-wrapper" style="border-radius: var(--radius-lg);">
           <img class="place-image" src="${imageUrl}" alt="${place.name}" onerror="this.src='https://via.placeholder.com/300?text=${encodeURIComponent(place.name)}';">
         </div>
->>>>>>> local-backup
         <h2>${place.name} ${gtHeartHtml(place.id)}</h2>
         <span class="category-badge category-${place.category}">${place.category}</span>
         ${place.tags.map(t => `<span class="tag">${t}</span>`).join(' ')}

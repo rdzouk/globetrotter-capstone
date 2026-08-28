@@ -101,9 +101,8 @@ places = [
   dict(name="Canal Olympia (Majestic Cinema)", category="entertainment", neighborhood="Ngoa-Ekelle", address="Université de Yaoundé I, Yaoundé", lat=3.8593788, lng=11.4964449, rating=4.1, rating_count=1854, price_level=2, phone="+237 6 90 20 20 20", tags=["entertainment","cinema","family-friendly"], description="Yaoundé's main modern cinema, on the University of Yaoundé I campus, with food stalls around the entrance."),
 
   # -------- LANDMARK --------
+  # -------- LANDMARK --------
   dict(name="La Cathédrale (Notre-Dame des Victoires)", category="landmark", neighborhood="Centre-ville", address="Cathédrale de Yaoundé, Poste Centrale, Yaoundé", lat=3.8632006, lng=11.5210148, rating=4.1, rating_count=39, price_level=None, phone=None, tags=["landmark","church","history","photos"], description="Yaoundé's landmark cathedral at Poste Centrale, known for its cross-shaped architecture and stained glass."),
-<<<<<<< HEAD
-=======
   
   # -------- NEW CATEGORIES --------
   # Hospitals (8)
@@ -171,19 +170,15 @@ places = [
   dict(name="Gare Routière de Tongolo", category="transport", neighborhood="Nsam", address="Tongolo, Yaoundé", lat=3.8900, lng=11.5200, rating=3.5, rating_count=450, price_level=None, phone=None, tags=["transport", "bus", "station"], description="Key northern bus terminal for travel to the West and North-West regions."),
   dict(name="Gare Ferroviaire de Yaoundé", category="transport", neighborhood="Centre-ville", address="Place de la Gare, Yaoundé", lat=3.8690, lng=11.5240, rating=3.8, rating_count=780, price_level=None, phone="+237 2 22 23 10 10", tags=["transport", "train", "station"], description="The central railway station providing passenger services to Douala and Ngaoundéré."),
   dict(name="Gare Routière de Biyem-Assi", category="transport", neighborhood="Biyem-Assi", address="Biyem-Assi, Yaoundé", lat=3.8300, lng=11.4800, rating=3.3, rating_count=320, price_level=None, phone=None, tags=["transport", "bus", "station"], description="Local and regional bus hub serving the bustling Biyem-Assi neighborhood."),
->>>>>>> local-backup
 ]
 
 CATEGORY_KEYWORDS = {
     'restaurant': 'restaurant,dining', 'sports': 'gym,fitness', 'spa': 'spa,massage',
     'nightlife': 'nightclub,bar', 'hotel': 'hotel,lobby', 'attraction': 'park,outdoor',
     'entertainment': 'cinema,movietheater', 'landmark': 'cathedral,church',
-<<<<<<< HEAD
-=======
     'hospital': 'hospital,medical', 'school': 'school,university', 'lake': 'lake,water',
     'worship': 'church,mosque', 'market': 'market,shopping', 'government': 'government,building',
     'nature': 'nature,hiking', 'transport': 'bus,station',
->>>>>>> local-backup
 }
 
 local_count = 0

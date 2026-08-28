@@ -261,8 +261,6 @@ NEIGHBORHOOD_INFO = {
         "blurb": "The university district, home to Université de Yaoundé I and the city's main cinema.",
         "nearby": ["Centre-ville"],
     },
-<<<<<<< HEAD
-=======
     "Mvolye": {
         "blurb": "A historic neighborhood famous for the Basilique Marie-Reine des Apôtres.",
         "nearby": ["Ngoa-Ekelle", "Centre-ville"],
@@ -327,5 +325,4 @@ NEIGHBORHOOD_INFO = {
         "blurb": "A quiet, historic area close to the center, known for its small lake.",
         "nearby": ["Ngoa-Ekelle"],
     },
->>>>>>> local-backup
 }

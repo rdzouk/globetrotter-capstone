@@ -14,11 +14,7 @@
  * Storage never touches at all.
  */
 
-<<<<<<< HEAD
-const CACHE_NAME = "globetrotter-shell-v1";
-=======
 const CACHE_NAME = "globetrotter-shell-v2";
->>>>>>> local-backup
 
 const APP_SHELL = [
   "index.html", "login.html", "register.html", "map.html", "recommendations.html",

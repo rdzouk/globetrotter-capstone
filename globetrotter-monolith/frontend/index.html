@@ -4,11 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Yaoundé Places — GlobeTrotter</title>
-  <meta name="description" content="Discover 58 real restaurants, spas, hotels, and attractions across Yaoundé, Cameroon. Search by neighborhood, category, and vibe.">
+  <meta name="description" content="Discover 108+ real restaurants, hospitals, schools, lakes, spas, hotels, and attractions across Yaoundé, Cameroon. Search by neighborhood, category, and vibe.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://globetrotter.example.com/index.html">
   <meta property="og:title" content="Explore Yaoundé — GlobeTrotter">
-  <meta property="og:description" content="Discover 58 real restaurants, spas, hotels, and attractions across Yaoundé, Cameroon. Search by neighborhood, category, and vibe.">
+  <meta property="og:description" content="Discover 108+ real restaurants, hospitals, schools, lakes, spas, hotels, and attractions across Yaoundé, Cameroon. Search by neighborhood, category, and vibe.">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary">
   <link rel="stylesheet" href="static/style.css">
@@ -19,8 +19,6 @@
 <body>
   <div id="navbar-placeholder"></div>
 
-<<<<<<< HEAD
-=======
   <section class="hero">
     <div class="hero-content">
       <h1>Discover Yaoundé</h1>
@@ -36,7 +34,6 @@
     </div>
   </section>
 
->>>>>>> local-backup
   <main class="container" id="main-content">
     <div class="page-header-row">
       <div>
@@ -58,8 +55,6 @@
         <option value="attraction">Attractions &amp; parks</option>
         <option value="entertainment">Entertainment &amp; cinema</option>
         <option value="landmark">Landmarks</option>
-<<<<<<< HEAD
-=======
         <option value="hospital">Hospital</option>
         <option value="school">School</option>
         <option value="lake">Lake</option>
@@ -68,7 +63,6 @@
         <option value="government">Government</option>
         <option value="nature">Nature</option>
         <option value="transport">Transport</option>
->>>>>>> local-backup
       </select>
       <select id="neighborhood">
         <option value="">Any neighborhood</option>
@@ -90,8 +84,6 @@
         <option value="Olembe">Olembe</option>
         <option value="Soa">Soa</option>
         <option value="Ngoa-Ekelle">Ngoa-Ekelle</option>
-<<<<<<< HEAD
-=======
         <option value="Mvolye">Mvolye</option>
         <option value="Mokolo">Mokolo</option>
         <option value="Briqueterie">Briqueterie</option>
@@ -104,7 +96,6 @@
         <option value="Obili">Obili</option>
         <option value="Djoungolo">Djoungolo</option>
         <option value="Nsam">Nsam</option>
->>>>>>> local-backup
       </select>
       <select id="tag">
         <option value="">Any vibe</option>
@@ -121,9 +112,6 @@
     <div id="area-info" class="area-info hidden"></div>
 
     <div id="destinations-grid" class="card-grid">
-<<<<<<< HEAD
-      <p class="muted">Loading places...</p>
-=======
       <div class="card skeleton-card">
         <div class="skeleton skeleton-img"></div>
         <div style="padding: 20px;">
@@ -145,7 +133,6 @@
           <div class="skeleton skeleton-text short"></div>
         </div>
       </div>
->>>>>>> local-backup
     </div>
   </main>
 
@@ -222,9 +209,6 @@
       loadAreaInfo(neighborhood);
 
       const grid = document.getElementById('destinations-grid');
-<<<<<<< HEAD
-      grid.innerHTML = '<p class="muted">Loading...</p>';
-=======
       grid.innerHTML = `
         <div class="card skeleton-card">
           <div class="skeleton skeleton-img"></div>
@@ -248,7 +232,6 @@
           </div>
         </div>
       `;
->>>>>>> local-backup
 
       try {
         const res = await fetch(`${API_BASE_URL}/destinations?` + params.toString());

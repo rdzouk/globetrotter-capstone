@@ -20,12 +20,8 @@ document.getElementById('navbar-placeholder').outerHTML = `
   <a href="#main-content" class="skip-link">Skip to main content</a>
   <nav class="navbar">
     <a href="index.html" class="brand">🌍 GlobeTrotter</a>
-<<<<<<< HEAD
-    <div class="nav-links">
-=======
     <button id="hamburger" class="hamburger" aria-label="Menu">☰</button>
     <div class="nav-links" id="nav-links">
->>>>>>> local-backup
       <a href="index.html" data-i18n="nav_destinations">Destinations</a>
       <a href="map.html" data-i18n="nav_map">Map</a>
       <a href="recommendations.html" data-i18n="nav_recommendations">Recommendations</a>
@@ -39,8 +35,6 @@ document.getElementById('navbar-placeholder').outerHTML = `
       <span id="nav-auth"></span>
     </div>
   </nav>
-<<<<<<< HEAD
-=======
   <nav class="bottom-nav" id="bottom-nav">
     <a href="index.html" class="bottom-nav-item">🏠<span>Home</span></a>
     <a href="map.html" class="bottom-nav-item">🗺️<span>Map</span></a>
@@ -49,7 +43,6 @@ document.getElementById('navbar-placeholder').outerHTML = `
     <a href="profile.html" class="bottom-nav-item">👤<span>Profile</span></a>
   </nav>
   <button id="scroll-to-top" class="scroll-to-top hidden" aria-label="Scroll to top">↑</button>
->>>>>>> local-backup
 `;
 
 document.getElementById('modal-placeholder').outerHTML = `
@@ -84,8 +77,6 @@ document.getElementById('modal-placeholder').outerHTML = `
     </div>
   </div>
 `;
-<<<<<<< HEAD
-=======
 
 // Mobile Navbar and Scroll to top logic
 document.addEventListener('click', (e) => {
@@ -107,4 +98,3 @@ window.addEventListener('scroll', () => {
     else btn.classList.add('hidden');
   }
 });
->>>>>>> local-backup
