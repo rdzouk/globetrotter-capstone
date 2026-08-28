@@ -19,6 +19,24 @@
 <body>
   <div id="navbar-placeholder"></div>
 
+<<<<<<< HEAD
+=======
+  <section class="hero">
+    <div class="hero-content">
+      <h1>Discover Yaoundé</h1>
+      <p>108+ real restaurants, hospitals, schools, lakes, spas, hotels, and more across Cameroon's capital.</p>
+      <div class="hero-categories">
+        <button onclick="filterByCategory('restaurant')">🍽️ Restaurants</button>
+        <button onclick="filterByCategory('hospital')">🏥 Hospitals</button>
+        <button onclick="filterByCategory('school')">🏫 Schools</button>
+        <button onclick="filterByCategory('hotel')">🏨 Hotels</button>
+        <button onclick="filterByCategory('nature')">🌳 Nature</button>
+        <button onclick="filterByCategory('market')">🛒 Markets</button>
+      </div>
+    </div>
+  </section>
+
+>>>>>>> local-backup
   <main class="container" id="main-content">
     <div class="page-header-row">
       <div>
@@ -40,6 +58,17 @@
         <option value="attraction">Attractions &amp; parks</option>
         <option value="entertainment">Entertainment &amp; cinema</option>
         <option value="landmark">Landmarks</option>
+<<<<<<< HEAD
+=======
+        <option value="hospital">Hospital</option>
+        <option value="school">School</option>
+        <option value="lake">Lake</option>
+        <option value="worship">Worship</option>
+        <option value="market">Market</option>
+        <option value="government">Government</option>
+        <option value="nature">Nature</option>
+        <option value="transport">Transport</option>
+>>>>>>> local-backup
       </select>
       <select id="neighborhood">
         <option value="">Any neighborhood</option>
@@ -61,6 +90,21 @@
         <option value="Olembe">Olembe</option>
         <option value="Soa">Soa</option>
         <option value="Ngoa-Ekelle">Ngoa-Ekelle</option>
+<<<<<<< HEAD
+=======
+        <option value="Mvolye">Mvolye</option>
+        <option value="Mokolo">Mokolo</option>
+        <option value="Briqueterie">Briqueterie</option>
+        <option value="Mvog-Mbi">Mvog-Mbi</option>
+        <option value="Etoudi">Etoudi</option>
+        <option value="Mballa II">Mballa II</option>
+        <option value="Mont Fébé">Mont Fébé</option>
+        <option value="Mvog-Betsi">Mvog-Betsi</option>
+        <option value="Nkolondom">Nkolondom</option>
+        <option value="Obili">Obili</option>
+        <option value="Djoungolo">Djoungolo</option>
+        <option value="Nsam">Nsam</option>
+>>>>>>> local-backup
       </select>
       <select id="tag">
         <option value="">Any vibe</option>
@@ -77,7 +121,31 @@
     <div id="area-info" class="area-info hidden"></div>
 
     <div id="destinations-grid" class="card-grid">
+<<<<<<< HEAD
       <p class="muted">Loading places...</p>
+=======
+      <div class="card skeleton-card">
+        <div class="skeleton skeleton-img"></div>
+        <div style="padding: 20px;">
+          <div class="skeleton skeleton-text"></div>
+          <div class="skeleton skeleton-text short"></div>
+        </div>
+      </div>
+      <div class="card skeleton-card">
+        <div class="skeleton skeleton-img"></div>
+        <div style="padding: 20px;">
+          <div class="skeleton skeleton-text"></div>
+          <div class="skeleton skeleton-text short"></div>
+        </div>
+      </div>
+      <div class="card skeleton-card">
+        <div class="skeleton skeleton-img"></div>
+        <div style="padding: 20px;">
+          <div class="skeleton skeleton-text"></div>
+          <div class="skeleton skeleton-text short"></div>
+        </div>
+      </div>
+>>>>>>> local-backup
     </div>
   </main>
 
@@ -154,7 +222,33 @@
       loadAreaInfo(neighborhood);
 
       const grid = document.getElementById('destinations-grid');
+<<<<<<< HEAD
       grid.innerHTML = '<p class="muted">Loading...</p>';
+=======
+      grid.innerHTML = `
+        <div class="card skeleton-card">
+          <div class="skeleton skeleton-img"></div>
+          <div style="padding: 20px;">
+            <div class="skeleton skeleton-text"></div>
+            <div class="skeleton skeleton-text short"></div>
+          </div>
+        </div>
+        <div class="card skeleton-card">
+          <div class="skeleton skeleton-img"></div>
+          <div style="padding: 20px;">
+            <div class="skeleton skeleton-text"></div>
+            <div class="skeleton skeleton-text short"></div>
+          </div>
+        </div>
+        <div class="card skeleton-card">
+          <div class="skeleton skeleton-img"></div>
+          <div style="padding: 20px;">
+            <div class="skeleton skeleton-text"></div>
+            <div class="skeleton skeleton-text short"></div>
+          </div>
+        </div>
+      `;
+>>>>>>> local-backup
 
       try {
         const res = await fetch(`${API_BASE_URL}/destinations?` + params.toString());

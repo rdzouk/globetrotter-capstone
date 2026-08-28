@@ -29,6 +29,24 @@
   <script src="static/i18n.js"></script>
   <script src="static/app.js"></script>
   <script>
+<<<<<<< HEAD
+=======
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>'"]/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+      }[character]));
+    }
+
+    function safeImageUrl(value) {
+      try {
+        const url = new URL(value, window.location.href);
+        return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+      } catch (err) {
+        return '';
+      }
+    }
+
+>>>>>>> local-backup
     async function loadFavorites() {
       const grid = document.getElementById('favorites-grid');
       const token = localStorage.getItem('gt_token');
@@ -43,6 +61,10 @@
           grid.innerHTML = '<p class="muted">Session expired. Please <a href="login.html">log in</a> again.</p>';
           return;
         }
+<<<<<<< HEAD
+=======
+        if (!res.ok) throw new Error('The favorites service is unavailable.');
+>>>>>>> local-backup
         const places = await res.json();
         gtFavoriteIds = new Set(places.map(p => p.id));
         if (!places.length) {
@@ -52,6 +74,7 @@
         grid.innerHTML = places.map(d => `
           <div class="card">
             <div class="card-image-wrapper">
+<<<<<<< HEAD
               <img class="place-image" src="${d.image_url}" alt="${d.name}" loading="lazy">
               ${gtHeartHtml(d.id)}
             </div>
@@ -64,12 +87,37 @@
             <p class="popularity">⭐ ${d.rating} (${d.rating_count} ratings)</p>
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
               <button onclick="openBookModal(${d.id}, '${d.name.replace(/'/g, "\\'")}', ${d.lat}, ${d.lng})">Plan itinerary</button>
+=======
+              <img class="place-image" src="${escapeHtml(safeImageUrl(d.image_url))}" alt="${escapeHtml(d.name)}" loading="lazy">
+              ${gtHeartHtml(d.id)}
+            </div>
+            <div class="card-header">
+              <h3>${escapeHtml(d.name)}</h3>
+              <span class="category-badge category-${escapeHtml(d.category)}">${escapeHtml(d.category)}</span>
+            </div>
+            <p class="muted">${escapeHtml(d.neighborhood)} · ${escapeHtml(d.address)}</p>
+            <p>${escapeHtml(d.description)}</p>
+            <p class="popularity">⭐ ${escapeHtml(d.rating)} (${escapeHtml(d.rating_count)} ratings)</p>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              <button class="plan-favorite-btn" data-id="${Number(d.id)}" data-name="${escapeHtml(d.name)}" data-lat="${Number(d.lat)}" data-lng="${Number(d.lng)}">Plan itinerary</button>
+>>>>>>> local-backup
               <a class="secondary-link-btn" href="map.html?place=${d.id}">Show on map</a>
             </div>
           </div>
         `).join('');
+<<<<<<< HEAD
       } catch (err) {
         grid.innerHTML = '<p class="error">Could not load favorites: ' + err + '</p>';
+=======
+        grid.querySelectorAll('.plan-favorite-btn').forEach(button => {
+          button.addEventListener('click', () => openBookModal(
+            Number(button.dataset.id), button.dataset.name,
+            Number(button.dataset.lat), Number(button.dataset.lng)
+          ));
+        });
+      } catch (err) {
+        grid.innerHTML = `<p class="error">${escapeHtml(err.message || 'Could not load favorites.')}</p>`;
+>>>>>>> local-backup
       }
     }
 

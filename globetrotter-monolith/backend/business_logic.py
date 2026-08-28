@@ -261,4 +261,71 @@ NEIGHBORHOOD_INFO = {
         "blurb": "The university district, home to Université de Yaoundé I and the city's main cinema.",
         "nearby": ["Centre-ville"],
     },
+<<<<<<< HEAD
+=======
+    "Mvolye": {
+        "blurb": "A historic neighborhood famous for the Basilique Marie-Reine des Apôtres.",
+        "nearby": ["Ngoa-Ekelle", "Centre-ville"],
+    },
+    "Mokolo": {
+        "blurb": "A busy commercial area hosting Yaoundé's largest and most vibrant open-air market.",
+        "nearby": ["Briqueterie", "Madagascar"],
+    },
+    "Briqueterie": {
+        "blurb": "A culturally diverse neighborhood known for its vibrant atmosphere and the Central Mosque.",
+        "nearby": ["Mokolo", "Centre-ville"],
+    },
+    "Mvog-Mbi": {
+        "blurb": "A lively district famous for its bustling local market and street life.",
+        "nearby": ["Centre-ville", "Mvan"],
+    },
+    "Etoudi": {
+        "blurb": "The prestigious district home to the Presidential Palace of Unity.",
+        "nearby": ["Mballa II", "Olembe"],
+    },
+    "Mballa II": {
+        "blurb": "A major administrative area where the national television headquarters (CRTV) is located.",
+        "nearby": ["Etoudi", "Bastos"],
+    },
+    "Mont Fébé": {
+        "blurb": "A hilly, scenic area known for its chapel and panoramic views of the city.",
+        "nearby": ["Bastos"],
+    },
+    "Mvog-Betsi": {
+        "blurb": "A green neighborhood famous for the Mvog-Betsi Zoological Park.",
+        "nearby": ["Obili"],
+    },
+    "Nkolondom": {
+        "blurb": "A northern neighborhood featuring prominent hills, great for nature walks.",
+        "nearby": ["Etoudi"],
+    },
+    "Obili": {
+        "blurb": "A dynamic student neighborhood situated near the university.",
+        "nearby": ["Ngoa-Ekelle", "Mvog-Betsi"],
+    },
+    "Djoungolo": {
+        "blurb": "A historic neighborhood with a strong community feel.",
+        "nearby": ["Nlongkak"],
+    },
+    "Nsam": {
+        "blurb": "An industrial and transit hub, home to several bus terminals.",
+        "nearby": ["Mvan"],
+    },
+    "Mefou": {
+        "blurb": "A southern outskirt area featuring beautiful lakes and wildlife.",
+        "nearby": ["Nsimalen"],
+    },
+    "Nkol-Eton": {
+        "blurb": "A residential and educational district near Bastos.",
+        "nearby": ["Elig-Essono"],
+    },
+    "Madagascar": {
+        "blurb": "A lively, densely populated neighborhood with a bustling local market.",
+        "nearby": ["Mokolo"],
+    },
+    "Atemengue": {
+        "blurb": "A quiet, historic area close to the center, known for its small lake.",
+        "nearby": ["Ngoa-Ekelle"],
+    },
+>>>>>>> local-backup
 }

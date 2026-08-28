@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<<<<<<< HEAD
   <title>Log in — GlobeTrotter</title>
   <meta name="description" content="Log in to GlobeTrotter to plan trips, save favorites, and get personalized recommendations for Yaoundé.">
   <meta name="robots" content="index, follow">
@@ -15,11 +16,21 @@
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#1a6b6b">
   <link rel="apple-touch-icon" href="static/icons/icon-192.png">
+=======
+  <title>GlobeTrotter — Login</title>
+  <meta name="theme-color" content="#1a6b6b">
+  <meta name="description" content="Log in to GlobeTrotter and continue your adventures.">
+  <link rel="stylesheet" href="static/style.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="static/icons/icon-192.png">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+>>>>>>> local-backup
 </head>
 <body>
   <div id="navbar-placeholder"></div>
 
   <main class="container" id="main-content">
+<<<<<<< HEAD
     <div class="hero-banner">
       <svg viewBox="0 0 800 220" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMax slice" style="width:100%; height:180px; border-radius:16px;">
         <defs>
@@ -92,10 +103,16 @@
     </div>
     <div class="form-card">
       <h1>Log in</h1>
+=======
+    <div class="form-card">
+      <h1>Welcome back</h1>
+      <p class="muted" style="font-size:0.85rem;">Log in to continue your adventures</p>
+>>>>>>> local-backup
       <form id="login-form">
         <label>Log in with</label>
         <div class="identifier-toggle">
           <label><input type="radio" name="identifier-type" value="email" checked> Email</label>
+<<<<<<< HEAD
           <label><input type="radio" name="identifier-type" value="phone"> Phone number</label>
         </div>
         <input type="text" id="identifier" placeholder="you@example.com" required>
@@ -107,6 +124,34 @@
         <p id="login-message"></p>
       </form>
       <p>New here? <a href="register.html">Create an account</a></p>
+=======
+          <label><input type="radio" name="identifier-type" value="phone"> Phone</label>
+        </div>
+        <input type="text" id="identifier" placeholder="Enter your email" required>
+        
+        <label>Password</label>
+        <div class="gt-pass" style="position:relative;">
+          <input type="password" id="password" placeholder="Enter your password" required style="width:100%; padding-right:45px;">
+          <button class="icon-btn" id="gt-eye" type="button" aria-label="Show password" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); border:none; background:transparent; color:var(--muted); font-size:1.2rem; padding:0;">◉</button>
+        </div>
+        
+        <a href="#" onclick="return false;" style="display:block; text-align:right; margin-top:8px; font-size:0.85rem; color:var(--brand);">Forgot password?</a>
+        
+        <button type="submit">Log in</button>
+        
+        <div style="display:flex; align-items:center; gap:10px; margin:16px 0; color:var(--muted); font-size:0.85rem; font-weight:600; text-transform:uppercase;">
+          <div style="flex:1; height:1px; background:var(--border);"></div>
+          <span>or</span>
+          <div style="flex:1; height:1px; background:var(--border);"></div>
+        </div>
+        
+        <div id="g_id_signin" style="display:flex; justify-content:center; min-height:40px;"></div>
+        <p id="google-login-message" class="muted" style="text-align:center; font-size:0.85rem; margin-top:8px;"></p>
+        
+        <p id="login-message"></p>
+      </form>
+      <p style="margin-top:16px;">Don't have an account? <a href="register.html" style="color:var(--brand); font-weight:600; text-decoration:none;">Register</a></p>
+>>>>>>> local-backup
     </div>
   </main>
 
@@ -118,6 +163,7 @@
   <script src="static/app.js"></script>
   <script>
     const identifierInput = document.getElementById('identifier');
+<<<<<<< HEAD
     document.querySelectorAll('input[name="identifier-type"]').forEach(radio => {
       radio.addEventListener('change', () => {
         const isEmail = document.querySelector('input[name="identifier-type"]:checked').value === 'email';
@@ -147,22 +193,134 @@
         const data = await res.json();
         if (!res.ok) {
           msg.textContent = data.error || 'Login failed';
+=======
+    document.querySelectorAll('input[name="identifier-type"]').forEach(radio => radio.addEventListener('change', () => {
+      const isEmail = document.querySelector('input[name="identifier-type"]:checked').value === 'email';
+      identifierInput.placeholder = isEmail ? 'Enter your email' : ' +237 6XX XXX XXX';
+      identifierInput.type = isEmail ? 'email' : 'tel'; 
+      identifierInput.value = '';
+    }));
+
+    document.getElementById('login-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const msg = document.getElementById('login-message'); 
+      msg.textContent = 'Signing you in…'; 
+      msg.className = '';
+      const payload = { password: document.getElementById('password').value };
+      const type = document.querySelector('input[name="identifier-type"]:checked').value;
+      
+      if(type === 'email') payload.email = identifierInput.value; 
+      else payload.phone = identifierInput.value;
+      
+      try {
+        const res = await fetch(`${API_BASE_URL}/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const text = await res.text(); 
+        let data = {};
+        if (text.trim()) {
+          try { data = JSON.parse(text) } catch (_) {
+            msg.textContent = `Server error (${res.status}). Please try again.`;
+            msg.className = 'error';
+            return;
+          }
+        }
+        if (!res.ok) {
+          msg.textContent = data.error || data.message || `Login failed (${res.status})`;
+          msg.className = 'error';
+          return;
+        }
+        if (!data.token) {
+          msg.textContent = 'Login succeeded but no session token was returned.';
+>>>>>>> local-backup
           msg.className = 'error';
           return;
         }
         localStorage.setItem('gt_token', data.token);
+<<<<<<< HEAD
         localStorage.setItem('gt_name', data.name);
         window.location.href = "index.html";
       } catch (err) {
         msg.textContent = 'Network error: ' + err;
+=======
+        localStorage.setItem('gt_name', data.name || '');
+        window.location.href = 'index.html';
+      } catch(err) {
+        msg.textContent = 'Connection error. Please check your connection and try again.';
+>>>>>>> local-backup
         msg.className = 'error';
       }
     });
   </script>
   <script>
+<<<<<<< HEAD
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
     }
   </script>
 </body>
 </html>
+=======
+    if('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('sw.js')) }
+  </script>
+  <script>
+    const GOOGLE_CLIENT_ID = "";
+    function handleGoogleCredential(response) {
+      const msg = document.getElementById('google-login-message');
+      if (!GOOGLE_CLIENT_ID) {
+        msg.textContent = 'Google Sign-In is ready. Add your Google Web Client ID and backend /google-login endpoint to activate it.';
+        return;
+      }
+      msg.textContent = 'Signing you in securely…';
+      fetch(`${API_BASE_URL}/google-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: response.credential })
+      })
+      .then(async r => {
+        const d = await r.json().catch(() => ({}));
+        if(!r.ok) throw Error(d.error || 'Google sign-in failed');
+        if(!d.token) throw Error('No session token returned');
+        localStorage.setItem('gt_token', d.token);
+        localStorage.setItem('gt_name', d.name || '');
+        location.href = 'index.html';
+      })
+      .catch(err => {
+        msg.textContent = err.message || 'Google sign-in failed';
+        msg.className = 'error';
+      })
+    }
+    function initGoogleLogin() {
+      if(!GOOGLE_CLIENT_ID || !window.google?.accounts?.id) return;
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleCredential,
+        auto_select: false,
+        cancel_on_tap_outside: true
+      });
+      google.accounts.id.renderButton(document.getElementById('g_id_signin'), {
+        type: 'standard',
+        theme: 'outline',
+        size: 'large',
+        text: 'signin_with',
+        shape: 'rectangular',
+        width: Math.min(360, Math.max(240, document.getElementById('g_id_signin').clientWidth || 360))
+      });
+    }
+    window.addEventListener('load', () => {
+      const w = () => window.google?.accounts?.id ? initGoogleLogin() : setTimeout(w, 100);
+      w();
+    });
+  </script>
+  <script>
+    (() => {
+      const eye = document.getElementById('gt-eye'), p = document.getElementById('password');
+      if(eye && p) {
+        eye.onclick = () => {
+          p.type = p.type === 'password' ? 'text' : 'password';
+          eye.textContent = p.type === 'password' ? '◉' : '◌';
+        };
+      }
+    })();
+  </script>
+</body>
+</html>
+>>>>>>> local-backup

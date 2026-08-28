@@ -199,7 +199,13 @@
       const imageUrl = place.image_url.startsWith('http') ? place.image_url : `${API_BASE_URL}${place.image_url}`;
       panel.innerHTML = `
         <button class="secondary" onclick="deselectPlace()" style="margin-bottom:8px;">← Back</button>
+<<<<<<< HEAD
         <img class="place-image" src="${imageUrl}" alt="${place.name}" onerror="this.src='https://via.placeholder.com/300?text=${encodeURIComponent(place.name)}';">
+=======
+        <div class="card-image-wrapper" style="border-radius: var(--radius-lg);">
+          <img class="place-image" src="${imageUrl}" alt="${place.name}" onerror="this.src='https://via.placeholder.com/300?text=${encodeURIComponent(place.name)}';">
+        </div>
+>>>>>>> local-backup
         <h2>${place.name} ${gtHeartHtml(place.id)}</h2>
         <span class="category-badge category-${place.category}">${place.category}</span>
         ${place.tags.map(t => `<span class="tag">${t}</span>`).join(' ')}
