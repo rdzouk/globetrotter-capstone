@@ -1,0 +1,73 @@
+version: "3.9"
+
+services:
+  user-service:
+    build: ./user-service
+    container_name: globetrotter_user_service
+    ports:
+      - "5001:5001"
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-me}
+      - PORT=5001
+      - RECOMMENDATION_SERVICE_URL=http://recommendation-service:5003
+    volumes:
+      - ./user-service/data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  itinerary-service:
+    build: ./itinerary-service
+    container_name: globetrotter_itinerary_service
+    ports:
+      - "5002:5002"
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-me}
+      - PORT=5002
+      - RECOMMENDATION_SERVICE_URL=http://recommendation-service:5003
+      - USER_SERVICE_URL=http://user-service:5001
+    volumes:
+      - ./itinerary-service/data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5002/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  recommendation-service:
+    build: ./recommendation-service
+    container_name: globetrotter_recommendation_service
+    ports:
+      - "5003:5003"
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-me}
+      - PORT=5003
+      - USER_SERVICE_URL=http://user-service:5001
+      - ITINERARY_SERVICE_URL=http://itinerary-service:5002
+    volumes:
+      - ./recommendation-service/data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5003/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api-gateway:
+    build: ./api-gateway
+    container_name: globetrotter_api_gateway
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - USER_SERVICE_URL=http://user-service:5001
+      - ITINERARY_SERVICE_URL=http://itinerary-service:5002
+      - RECOMMENDATION_SERVICE_URL=http://recommendation-service:5003
+    depends_on:
+      user-service:
+        condition: service_healthy
+      itinerary-service:
+        condition: service_healthy
+      recommendation-service:
+        condition: service_healthy

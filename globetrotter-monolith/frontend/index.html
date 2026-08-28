@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yaoundé Places — GlobeTrotter</title>
+  <meta name="description" content="Discover 58 real restaurants, spas, hotels, and attractions across Yaoundé, Cameroon. Search by neighborhood, category, and vibe.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://globetrotter.example.com/index.html">
+  <meta property="og:title" content="Explore Yaoundé — GlobeTrotter">
+  <meta property="og:description" content="Discover 58 real restaurants, spas, hotels, and attractions across Yaoundé, Cameroon. Search by neighborhood, category, and vibe.">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary">
+  <link rel="stylesheet" href="static/style.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#1a6b6b">
+  <link rel="apple-touch-icon" href="static/icons/icon-192.png">
+</head>
+<body>
+  <div id="navbar-placeholder"></div>
+
+  <section class="hero">
+    <div class="hero-content">
+      <h1>Discover Yaoundé</h1>
+      <p>108+ real restaurants, hospitals, schools, lakes, spas, hotels, and more across Cameroon's capital.</p>
+      <div class="hero-categories">
+        <button onclick="filterByCategory('restaurant')">🍽️ Restaurants</button>
+        <button onclick="filterByCategory('hospital')">🏥 Hospitals</button>
+        <button onclick="filterByCategory('school')">🏫 Schools</button>
+        <button onclick="filterByCategory('hotel')">🏨 Hotels</button>
+        <button onclick="filterByCategory('nature')">🌳 Nature</button>
+        <button onclick="filterByCategory('market')">🛒 Markets</button>
+      </div>
+    </div>
+  </section>
+
+  <main class="container" id="main-content">
+    <div class="page-header-row">
+      <div>
+        <h1>Explore Yaoundé</h1>
+        <p class="muted">Real restaurants, sport complexes, spas, hotels, cinemas, landmarks and more.</p>
+      </div>
+      <a href="map.html" class="map-link-btn">🗺️ Open full interactive map</a>
+    </div>
+
+    <form id="search-form" class="search-bar">
+      <input type="text" id="q" placeholder="Search by name, neighborhood, description...">
+      <select id="category">
+        <option value="">Any category</option>
+        <option value="restaurant">Restaurants</option>
+        <option value="sports">Sport complexes</option>
+        <option value="spa">Spas &amp; relaxation</option>
+        <option value="nightlife">Nightlife</option>
+        <option value="hotel">Hotels</option>
+        <option value="attraction">Attractions &amp; parks</option>
+        <option value="entertainment">Entertainment &amp; cinema</option>
+        <option value="landmark">Landmarks</option>
+        <option value="hospital">Hospital</option>
+        <option value="school">School</option>
+        <option value="lake">Lake</option>
+        <option value="worship">Worship</option>
+        <option value="market">Market</option>
+        <option value="government">Government</option>
+        <option value="nature">Nature</option>
+        <option value="transport">Transport</option>
+      </select>
+      <select id="neighborhood">
+        <option value="">Any neighborhood</option>
+        <option value="Bastos">Bastos</option>
+        <option value="Centre-ville">Centre-ville</option>
+        <option value="Hippodrome">Hippodrome</option>
+        <option value="Nlongkak">Nlongkak</option>
+        <option value="Elig-Essono">Elig-Essono</option>
+        <option value="Etoa-Meki">Etoa-Meki</option>
+        <option value="Essos">Essos</option>
+        <option value="Ngousso">Ngousso</option>
+        <option value="Odza">Odza</option>
+        <option value="Biyem-Assi">Biyem-Assi</option>
+        <option value="Mvan">Mvan</option>
+        <option value="Mimboman">Mimboman</option>
+        <option value="Warda">Warda</option>
+        <option value="Nkolbisson">Nkolbisson</option>
+        <option value="Nsimalen">Nsimalen</option>
+        <option value="Olembe">Olembe</option>
+        <option value="Soa">Soa</option>
+        <option value="Ngoa-Ekelle">Ngoa-Ekelle</option>
+        <option value="Mvolye">Mvolye</option>
+        <option value="Mokolo">Mokolo</option>
+        <option value="Briqueterie">Briqueterie</option>
+        <option value="Mvog-Mbi">Mvog-Mbi</option>
+        <option value="Etoudi">Etoudi</option>
+        <option value="Mballa II">Mballa II</option>
+        <option value="Mont Fébé">Mont Fébé</option>
+        <option value="Mvog-Betsi">Mvog-Betsi</option>
+        <option value="Nkolondom">Nkolondom</option>
+        <option value="Obili">Obili</option>
+        <option value="Djoungolo">Djoungolo</option>
+        <option value="Nsam">Nsam</option>
+      </select>
+      <select id="tag">
+        <option value="">Any vibe</option>
+        <option value="fancy">Fancy</option>
+        <option value="casual">Casual</option>
+        <option value="affordable">Affordable</option>
+        <option value="live-music">Live music</option>
+        <option value="outdoor">Outdoor</option>
+        <option value="family-friendly">Family-friendly</option>
+      </select>
+      <button type="submit">Search</button>
+    </form>
+
+    <div id="area-info" class="area-info hidden"></div>
+
+    <div id="destinations-grid" class="card-grid">
+      <div class="card skeleton-card">
+        <div class="skeleton skeleton-img"></div>
+        <div style="padding: 20px;">
+          <div class="skeleton skeleton-text"></div>
+          <div class="skeleton skeleton-text short"></div>
+        </div>
+      </div>
+      <div class="card skeleton-card">
+        <div class="skeleton skeleton-img"></div>
+        <div style="padding: 20px;">
+          <div class="skeleton skeleton-text"></div>
+          <div class="skeleton skeleton-text short"></div>
+        </div>
+      </div>
+      <div class="card skeleton-card">
+        <div class="skeleton skeleton-img"></div>
+        <div style="padding: 20px;">
+          <div class="skeleton skeleton-text"></div>
+          <div class="skeleton skeleton-text short"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div id="modal-placeholder"></div>
+
+  <script src="static/layout.js"></script>
+  <script src="static/config.js"></script>
+  <script src="static/i18n.js"></script>
+  <script src="static/app.js"></script>
+  <script>
+    async function loadAreaInfo(neighborhood) {
+      const el = document.getElementById('area-info');
+      if (!neighborhood) { el.classList.add('hidden'); return; }
+      try {
+        const res = await fetch(`${API_BASE_URL}/neighborhoods/${encodeURIComponent(neighborhood)}`);
+        if (!res.ok) { el.classList.add('hidden'); return; }
+        const info = await res.json();
+        el.innerHTML = `
+          <strong>Good to know about ${info.neighborhood}:</strong> ${info.blurb}
+          ${info.nearby_neighborhoods.length ? `<br><span class="muted">Nearby areas: ${info.nearby_neighborhoods.join(', ')}</span>` : ''}
+          <br><span class="muted">${info.place_count} place(s) listed here.</span>
+        `;
+        el.classList.remove('hidden');
+      } catch (err) {
+        el.classList.add('hidden');
+      }
+    }
+
+    async function toggleNearby(destinationId) {
+      const container = document.getElementById(`nearby-${destinationId}`);
+      if (!container.classList.contains('hidden')) {
+        container.classList.add('hidden');
+        return;
+      }
+      container.classList.remove('hidden');
+      container.innerHTML = '<span class="muted">Loading nearby places...</span>';
+      try {
+        const res = await fetch(`${API_BASE_URL}/destinations/${destinationId}/nearby?limit=4`);
+        const nearby = await res.json();
+        if (!nearby.length) {
+          container.innerHTML = '<span class="muted">Nothing else listed within 3km.</span>';
+          return;
+        }
+        container.innerHTML = '<strong>Nearby:</strong><br>' + nearby.map(n =>
+          `${n.name} <span class="muted">(${n.distance_km} km, ${n.category})</span>`
+        ).join('<br>');
+      } catch (err) {
+        container.innerHTML = '<span class="error">Could not load nearby places.</span>';
+      }
+    }
+
+    function filterByTag(tag) {
+      document.getElementById('tag').value = tag;
+      loadDestinations();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function filterByCategory(category) {
+      document.getElementById('category').value = category;
+      loadDestinations();
+    }
+
+    async function loadDestinations() {
+      const q = document.getElementById('q').value;
+      const category = document.getElementById('category').value;
+      const neighborhood = document.getElementById('neighborhood').value;
+      const tag = document.getElementById('tag').value;
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      if (category) params.set('category', category);
+      if (neighborhood) params.set('neighborhood', neighborhood);
+      if (tag) params.set('tag', tag);
+
+      loadAreaInfo(neighborhood);
+
+      const grid = document.getElementById('destinations-grid');
+      grid.innerHTML = `
+        <div class="card skeleton-card">
+          <div class="skeleton skeleton-img"></div>
+          <div style="padding: 20px;">
+            <div class="skeleton skeleton-text"></div>
+            <div class="skeleton skeleton-text short"></div>
+          </div>
+        </div>
+        <div class="card skeleton-card">
+          <div class="skeleton skeleton-img"></div>
+          <div style="padding: 20px;">
+            <div class="skeleton skeleton-text"></div>
+            <div class="skeleton skeleton-text short"></div>
+          </div>
+        </div>
+        <div class="card skeleton-card">
+          <div class="skeleton skeleton-img"></div>
+          <div style="padding: 20px;">
+            <div class="skeleton skeleton-text"></div>
+            <div class="skeleton skeleton-text short"></div>
+          </div>
+        </div>
+      `;
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/destinations?` + params.toString());
+        const data = await res.json();
+        if (!data.length) {
+          grid.innerHTML = '<p class="muted">No places match that search.</p>';
+          return;
+        }
+        grid.innerHTML = data.map(destinationCard).join('');
+      } catch (err) {
+        grid.innerHTML = '<p class="error">Could not load places: ' + err + '</p>';
+      }
+    }
+
+    function destinationCard(d) {
+      const stars = '⭐'.repeat(Math.round(d.rating));
+      return `
+        <div class="card">
+          <div class="card-image-wrapper">
+            <img class="place-image" src="${d.image_url}" alt="${d.name}" loading="lazy">
+            ${gtHeartHtml(d.id)}
+          </div>
+          <div class="card-header">
+            <h3>${d.name}</h3>
+            <span class="category-badge category-${d.category}" style="cursor:pointer" onclick="filterByCategory('${d.category}')" title="See all ${d.category}">${d.category}</span>
+          </div>
+          <p class="muted">${d.neighborhood} · ${d.address}</p>
+          <p>${d.description}</p>
+          <div class="tags">${d.tags.map(t => `<span class="tag tag-clickable" onclick="filterByTag('${t}')" title="See all ${t}">${t}</span>`).join('')}</div>
+          <p class="popularity">${stars} ${d.rating} (${d.rating_count} ratings)</p>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button onclick="openBookModal(${d.id}, '${d.name.replace(/'/g, "\\'")}', ${d.lat}, ${d.lng})">Plan itinerary</button>
+            <a class="secondary-link-btn" href="map.html?place=${d.id}">Show on map</a>
+            <button class="secondary" onclick="toggleNearby(${d.id})">Nearby places</button>
+          </div>
+          <div id="nearby-${d.id}" class="nearby-section hidden"></div>
+        </div>
+      `;
+    }
+
+    document.getElementById('search-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      loadDestinations();
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+      gtLoadFavoriteIds().then(loadDestinations);
+    });
+  </script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+    }
+  </script>
+</body>
+</html>

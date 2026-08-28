@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Feedback — GlobeTrotter</title>
+  <meta name="description" content="Share feedback about the GlobeTrotter app.">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="stylesheet" href="static/style.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#1a6b6b">
+  <link rel="apple-touch-icon" href="static/icons/icon-192.png">
+</head>
+<body>
+  <div id="navbar-placeholder"></div>
+
+  <main class="container" id="main-content">
+    <h1>App feedback</h1>
+    <p class="muted">Tell us what you think of GlobeTrotter itself — separate from reviews of individual places.</p>
+
+    <div class="form-card" style="max-width:600px;">
+      <form id="feedback-form">
+        <label>Your message</label>
+        <textarea id="feedback-message" rows="4" placeholder="What do you like? What could be better?" required></textarea>
+        <label>Rating (optional)</label>
+        <div class="star-picker" id="feedback-star-picker">
+          <span data-value="1">★</span><span data-value="2">★</span><span data-value="3">★</span><span data-value="4">★</span><span data-value="5">★</span>
+        </div>
+        <button type="submit">Submit feedback</button>
+        <p id="feedback-message-status"></p>
+      </form>
+    </div>
+
+    <h2 style="margin-top:40px;">What others are saying</h2>
+    <div id="feedback-list" class="card-grid">
+      <p class="muted">Loading...</p>
+    </div>
+  </main>
+
+  <div id="modal-placeholder"></div>
+
+  <script src="static/layout.js"></script>
+  <script src="static/config.js"></script>
+  <script src="static/i18n.js"></script>
+  <script src="static/app.js"></script>
+  <script>
+    let feedbackRating = 0;
+    document.querySelectorAll('#feedback-star-picker span').forEach(star => {
+      star.addEventListener('click', () => {
+        feedbackRating = feedbackRating === parseInt(star.dataset.value, 10) ? 0 : parseInt(star.dataset.value, 10);
+        document.querySelectorAll('#feedback-star-picker span').forEach(s => {
+          s.classList.toggle('filled', parseInt(s.dataset.value, 10) <= feedbackRating);
+        });
+      });
+    });
+
+    document.getElementById('feedback-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const token = localStorage.getItem('gt_token');
+      const msg = document.getElementById('feedback-message-status');
+      if (!token) {
+        msg.textContent = 'Please log in to leave feedback.';
+        msg.className = 'error';
+        return;
+      }
+      const payload = { message: document.getElementById('feedback-message').value };
+      if (feedbackRating) payload.rating = feedbackRating;
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/feedback`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          msg.textContent = (data.errors && data.errors.join(', ')) || data.error || 'Could not submit feedback';
+          msg.className = 'error';
+          return;
+        }
+        msg.textContent = 'Thanks for the feedback!';
+        msg.className = 'success';
+        document.getElementById('feedback-form').reset();
+        feedbackRating = 0;
+        document.querySelectorAll('#feedback-star-picker span').forEach(s => s.classList.remove('filled'));
+        loadFeedback();
+      } catch (err) {
+        msg.textContent = 'Network error: ' + err;
+        msg.className = 'error';
+      }
+    });
+
+    async function loadFeedback() {
+      const list = document.getElementById('feedback-list');
+      try {
+        const res = await fetch(`${API_BASE_URL}/feedback`);
+        const items = await res.json();
+        if (!items.length) {
+          list.innerHTML = '<p class="muted">No feedback yet — be the first!</p>';
+          return;
+        }
+        list.innerHTML = items.slice().reverse().map(f => `
+          <div class="card">
+            <div class="card-header">
+              <h3>${f.user_name}</h3>
+              ${f.rating ? `<span class="stars">${'★'.repeat(Math.round(f.rating))}${'☆'.repeat(5 - Math.round(f.rating))}</span>` : ''}
+            </div>
+            <p>${f.message}</p>
+          </div>
+        `).join('');
+      } catch (err) {
+        list.innerHTML = '<p class="error">Could not load feedback: ' + err + '</p>';
+      }
+    }
+
+    loadFeedback();
+  </script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+    }
+  </script>
+</body>
+</html>

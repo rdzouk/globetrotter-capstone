@@ -1,0 +1,35 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      # This assumes a VPS reachable over SSH with docker-compose.yml
+      # already present (see DEPLOYMENT.md) and this repo checked out
+      # there. Configure these as GitHub repo secrets:
+      #   VPS_HOST, VPS_USER, VPS_SSH_KEY
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/globetrotter
+            git pull origin main
+            docker compose pull
+            docker compose build
+            docker compose run --rm backend alembic upgrade head
+            docker compose up -d --wait
+            # Fail the deploy (and leave the previous containers running,
+            # since `docker compose up -d` doesn't remove them until the
+            # new ones are healthy) if the health check doesn't pass.
+            curl -f http://localhost/health || (echo "Health check failed, rolling back" && docker compose rollback 2>/dev/null; exit 1)
