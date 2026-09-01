@@ -315,6 +315,40 @@ def destination_reviews(destination_id):
 
 
 # ---------------------------------------------------------------------
+# Place comments / replies
+# ---------------------------------------------------------------------
+@app.route("/destinations/<int:destination_id>/comments", methods=["GET"])
+def list_destination_comments(destination_id):
+    if not db.get_destination_by_id(destination_id):
+        return jsonify({"error": "destination not found"}), 404
+    return jsonify(db.get_comments_for_place(destination_id)), 200
+
+
+@app.route("/destinations/<int:destination_id>/comments", methods=["POST"])
+@require_auth
+def create_destination_comment(destination_id):
+    if not db.get_destination_by_id(destination_id):
+        return jsonify({"error": "destination not found"}), 404
+
+    body = request.get_json(silent=True) or {}
+    message = (body.get("message") or "").strip()
+    parent_comment_id = body.get("parent_comment_id")
+
+    if not message:
+        return jsonify({"error": "message is required"}), 400
+
+    if parent_comment_id is not None:
+        parent = db.get_comment_by_id(parent_comment_id)
+        if not parent or parent["place_id"] != destination_id:
+            return jsonify({"error": "parent comment not found"}), 404
+        if parent.get("parent_comment_id") is not None:
+            return jsonify({"error": "reply nesting is limited to one level"}), 400
+
+    comment = db.add_comment(destination_id, request.user_id, parent_comment_id, message)
+    return jsonify(comment), 201
+
+
+# ---------------------------------------------------------------------
 # POST /feedback  (auth required)
 # Comments/critiques about the APP itself — separate from place
 # reviews above.

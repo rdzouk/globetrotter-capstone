@@ -187,6 +187,34 @@ def test_recommendations_prefers_matching_tags(client):
     assert recs[0]["name"] == "Shu Anta Nlongkak"  # spa tag matches preference
 
 
+def test_destination_comments_require_auth(client):
+    resp = client.post("/destinations/1/comments", json={"message": "Needs login"})
+    assert resp.status_code == 401
+
+
+def test_destination_comments_allow_nested_replies(client):
+    register(client)
+    headers = auth_header(client)
+
+    parent = client.post("/destinations/1/comments", headers=headers, json={"message": "Nice place"}).get_json()
+    reply = client.post("/destinations/1/comments", headers=headers, json={
+        "message": "Agreed!",
+        "parent_comment_id": parent["id"],
+    }).get_json()
+
+    assert parent["message"] == "Nice place"
+    assert reply["parent_comment_id"] == parent["id"]
+
+    resp = client.get("/destinations/1/comments")
+    assert resp.status_code == 200
+    comments = resp.get_json()
+    assert any(c["message"] == "Nice place" for c in comments)
+    assert any(
+        c["message"] == "Nice place" and c["replies"] and c["replies"][0]["message"] == "Agreed!"
+        for c in comments
+    )
+
+
 # ---- Itineraries ----
 
 def test_create_itinerary(client):

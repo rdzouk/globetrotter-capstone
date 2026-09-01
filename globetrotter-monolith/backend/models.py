@@ -38,6 +38,7 @@ class User(Base):
 
     itineraries: Mapped[list["Itinerary"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     favorites: Mapped[list["Favorite"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    comments: Mapped[list["Comment"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     feedback_entries: Mapped[list["Feedback"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
     __table_args__ = (
@@ -66,10 +67,33 @@ class Destination(Base):
 
     itineraries: Mapped[list["Itinerary"]] = relationship(back_populates="destination")
     favorites: Mapped[list["Favorite"]] = relationship(back_populates="destination")
+    comments: Mapped[list["Comment"]] = relationship(back_populates="destination", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_destinations_category", "category"),
         Index("ix_destinations_neighborhood", "neighborhood"),
+    )
+
+
+class Comment(Base):
+    __tablename__ = "comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    place_id: Mapped[int] = mapped_column(ForeignKey("destinations.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    parent_comment_id: Mapped[int | None] = mapped_column(ForeignKey("comments.id", ondelete="CASCADE"), nullable=True)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="comments")
+    destination: Mapped["Destination"] = relationship(back_populates="comments")
+    parent: Mapped["Comment | None"] = relationship(back_populates="replies", remote_side="Comment.id")
+    replies: Mapped[list["Comment"]] = relationship(back_populates="parent", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_comments_place_id", "place_id"),
+        Index("ix_comments_parent_comment_id", "parent_comment_id"),
+        Index("ix_comments_created_at", "created_at"),
     )
 
 

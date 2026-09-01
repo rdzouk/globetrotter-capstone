@@ -207,6 +207,119 @@
       });
     });
 
+    async function bindCommentUi(placeId) {
+      const input = document.getElementById('place-comment-input');
+      const submitBtn = document.getElementById('place-comment-submit');
+      const emojiBtn = document.getElementById('place-comment-emoji');
+      const emojiPicker = document.getElementById('place-comment-emoji-picker');
+      const msg = document.getElementById('place-comment-message');
+      const list = document.getElementById('place-comments-list');
+
+      const loadComments = async () => {
+        try {
+          const res = await fetch(`${API_BASE_URL}/destinations/${placeId}/comments`);
+          const comments = await res.json();
+          list.innerHTML = gtRenderCommentThread(comments);
+          list.querySelectorAll('.comment-reply-btn').forEach((button) => {
+            button.addEventListener('click', () => {
+              const box = document.getElementById(`comment-reply-box-${button.dataset.commentId}`);
+              if (box) box.classList.toggle('hidden');
+            });
+          });
+          list.querySelectorAll('[data-submit-reply]').forEach((button) => {
+            button.addEventListener('click', async () => {
+              const token = localStorage.getItem('gt_token');
+              if (!token) {
+                window.location.href = 'login.html';
+                return;
+              }
+              const textarea = document.getElementById(`comment-reply-text-${button.dataset.submitReply}`);
+              const text = textarea?.value.trim();
+              if (!text) return;
+              try {
+                const res = await fetch(`${API_BASE_URL}/destinations/${placeId}/comments`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                  body: JSON.stringify({ message: text, parent_comment_id: Number(button.dataset.submitReply) }),
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                  msg.textContent = data.error || 'Reply failed.';
+                  msg.className = 'error';
+                  return;
+                }
+                textarea.value = '';
+                document.getElementById(`comment-reply-box-${button.dataset.submitReply}`).classList.add('hidden');
+                await loadComments();
+              } catch (err) {
+                msg.textContent = 'Reply failed. Please try again.';
+                msg.className = 'error';
+              }
+            });
+          });
+          list.querySelectorAll('.emoji-button').forEach((button) => {
+            button.addEventListener('click', () => {
+              const id = button.dataset.emojiTarget;
+              const picker = document.getElementById(`emoji-picker-reply-${button.closest('.comment-thread')?.querySelector('.comment-card')?.dataset?.id || ''}`);
+              if (picker) picker.classList.toggle('hidden');
+              const target = document.getElementById(id);
+              if (target) target.focus();
+            });
+          });
+          list.querySelectorAll('[data-emoji-insert]').forEach((button) => {
+            button.addEventListener('click', () => {
+              const target = document.getElementById(button.dataset.emojiInsert);
+              gtInsertEmoji(target?.id || '', button.dataset.emoji);
+            });
+          });
+        } catch (err) {
+          list.innerHTML = '<p class="error">Could not load comments.</p>';
+        }
+      };
+
+      const toggleEmojiPicker = () => emojiPicker.classList.toggle('hidden');
+      emojiBtn.addEventListener('click', toggleEmojiPicker);
+      emojiPicker.querySelectorAll('[data-emoji]').forEach((button) => {
+        button.addEventListener('click', () => {
+          gtInsertEmoji('place-comment-input', button.dataset.emoji);
+          emojiPicker.classList.add('hidden');
+        });
+      });
+
+      submitBtn.addEventListener('click', async () => {
+        const token = localStorage.getItem('gt_token');
+        if (!token) { window.location.href = 'login.html'; return; }
+        const text = input.value.trim();
+        if (!text) {
+          msg.textContent = 'Please write a comment first.';
+          msg.className = 'error';
+          return;
+        }
+        try {
+          const res = await fetch(`${API_BASE_URL}/destinations/${placeId}/comments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ message: text })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            msg.textContent = data.error || 'Comment failed.';
+            msg.className = 'error';
+            return;
+          }
+          input.value = '';
+          msg.textContent = 'Comment posted.';
+          msg.className = 'success';
+          await loadComments();
+        } catch (err) {
+          msg.textContent = 'Could not post comment.';
+          msg.className = 'error';
+        }
+      });
+
+      await loadComments();
+    }
+
     async function selectPlace(place) {
       selectedPlace = place;
       document.getElementById('sidebar-default').classList.add('hidden');
@@ -230,9 +343,32 @@
         <button onclick="openBookModal(${place.id}, '${place.name.replace(/'/g, "\\'")}', ${place.lat}, ${place.lng})">Plan itinerary</button>
         <button class="secondary" onclick="renderRoute(selectedPlace)">🧭 Route from my location</button>
         <div id="route-panel"></div>
+        <div id="comment-panel" class="comment-panel">
+          <h3>Comments</h3>
+          <div id="comment-form-wrapper">
+            <div class="comment-input-row">
+              <textarea id="place-comment-input" rows="3" placeholder="Share your thoughts..."></textarea>
+              <button type="button" id="place-comment-emoji" class="secondary small" aria-label="Insert emoji">😊</button>
+            </div>
+            <div id="place-comment-emoji-picker" class="emoji-picker hidden">
+              <button type="button" data-emoji="🙂">🙂</button>
+              <button type="button" data-emoji="👏">👏</button>
+              <button type="button" data-emoji="😍">😍</button>
+              <button type="button" data-emoji="🔥">🔥</button>
+              <button type="button" data-emoji="🌍">🌍</button>
+              <button type="button" data-emoji="❤️">❤️</button>
+            </div>
+            <div class="comment-form-actions">
+              <button type="button" id="place-comment-submit">Post comment</button>
+            </div>
+            <p id="place-comment-message" class="muted"></p>
+          </div>
+          <div id="place-comments-list">Loading comments...</div>
+        </div>
         <div id="nearby-panel" class="nearby-section">Loading nearby places...</div>
       `;
 
+      bindCommentUi(place.id);
       map.flyTo({ center: [place.lng, place.lat], zoom: 15 });
 
       try {

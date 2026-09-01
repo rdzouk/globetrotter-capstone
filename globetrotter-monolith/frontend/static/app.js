@@ -146,11 +146,99 @@ function renderNavAuth() {
       e.preventDefault();
       localStorage.removeItem('gt_token');
       localStorage.removeItem('gt_name');
-      window.location.reload();
+      window.location.href = 'login.html';
     });
   } else {
-    el.innerHTML = `<a href="/login" data-i18n="login_link">${gtT('login_link')}</a> <a href="/register" data-i18n="register_link">${gtT('register_link')}</a>`;
+    el.innerHTML = `<a href="login.html" data-i18n="login_link">${gtT('login_link')}</a> <a href="register.html" data-i18n="register_link">${gtT('register_link')}</a>`;
   }
+}
+
+function gtGetCurrentPageName() {
+  const path = window.location.pathname.replace(/\\/+$|index\.html$/g, '').split('/').pop() || 'index.html';
+  return path || 'index.html';
+}
+
+function gtIsLoggedIn() {
+  return Boolean(localStorage.getItem('gt_token'));
+}
+
+function gtRedirectToLoginIfNeeded() {
+  const page = gtGetCurrentPageName();
+  const publicPages = ['login.html', 'register.html', 'offline.html'];
+  const isPublicPage = publicPages.includes(page) || page === '';
+
+  if (page === 'login.html' && gtIsLoggedIn()) {
+    window.location.href = 'index.html';
+    return;
+  }
+
+  if (!gtIsLoggedIn() && !isPublicPage) {
+    window.location.href = 'login.html';
+  }
+}
+
+function gtEscapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  }[char]));
+}
+
+function gtRenderCommentThread(comments, level = 0) {
+  if (!comments || !comments.length) {
+    return '<p class="muted">No comments yet. Be the first to share a thought.</p>';
+  }
+
+  return comments.map((comment) => {
+    const avatar = (comment.user_name || 'T').trim().charAt(0).toUpperCase() || 'T';
+    const replies = comment.replies && comment.replies.length ? gtRenderCommentThread(comment.replies, level + 1) : '';
+    const indent = Math.min(level * 22, 60);
+    const messageHtml = gtEscapeHtml(comment.message).replace(/\n/g, '<br>');
+
+    return `
+      <div class="comment-thread" style="margin-left:${indent}px;">
+        <div class="comment-card">
+          <div class="comment-header">
+            <div class="comment-user">
+              <span class="comment-avatar">${avatar}</span>
+              <strong>${gtEscapeHtml(comment.user_name || 'Traveler')}</strong>
+            </div>
+            <span class="comment-time">${new Date(comment.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+          </div>
+          <p>${messageHtml}</p>
+          <button type="button" class="secondary small comment-reply-btn" data-comment-id="${comment.id}">Reply</button>
+          <div id="comment-reply-box-${comment.id}" class="comment-reply-box hidden">
+            <textarea id="comment-reply-text-${comment.id}" rows="2" placeholder="Write a reply..."></textarea>
+            <div class="comment-form-actions">
+              <button type="button" class="secondary small emoji-button" data-emoji-target="comment-reply-text-${comment.id}" aria-label="Insert emoji">😊</button>
+              <div id="emoji-picker-reply-${comment.id}" class="emoji-picker hidden">
+                <button type="button" data-emoji-insert="comment-reply-text-${comment.id}" data-emoji="🙂">🙂</button>
+                <button type="button" data-emoji-insert="comment-reply-text-${comment.id}" data-emoji="👏">👏</button>
+                <button type="button" data-emoji-insert="comment-reply-text-${comment.id}" data-emoji="😍">😍</button>
+                <button type="button" data-emoji-insert="comment-reply-text-${comment.id}" data-emoji="🔥">🔥</button>
+                <button type="button" data-emoji-insert="comment-reply-text-${comment.id}" data-emoji="🌍">🌍</button>
+                <button type="button" data-emoji-insert="comment-reply-text-${comment.id}" data-emoji="❤️">❤️</button>
+              </div>
+              <button type="button" class="small" data-submit-reply="${comment.id}">Send</button>
+            </div>
+          </div>
+        </div>
+        ${replies ? `<div class="comment-replies">${replies}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function gtInsertEmoji(targetId, emoji) {
+  const textArea = document.getElementById(targetId);
+  if (!textArea) return;
+  const start = textArea.selectionStart;
+  const end = textArea.selectionEnd;
+  textArea.setRangeText(emoji, start, end, 'end');
+  textArea.focus();
 }
 
 let _bookDestLat = null;
@@ -200,6 +288,7 @@ function updateTransportEstimate() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  gtRedirectToLoginIfNeeded();
   renderNavAuth();
   gtLoadFavoriteIds();
 

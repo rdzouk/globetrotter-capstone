@@ -1,0 +1,48 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy application
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to VPS over SSH
+        uses: appleboy/ssh-action@v1.1.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -e
+            APP_DIR="${{ secrets.VPS_APP_DIR || '/opt/globetrotter' }}"
+            REPO_URL="https://github.com/${{ github.repository }}.git"
+
+            mkdir -p "$APP_DIR"
+            if [ -d "$APP_DIR/.git" ]; then
+              cd "$APP_DIR"
+              git fetch origin
+              git checkout main
+              git pull --ff-only origin main
+            else
+              git clone "$REPO_URL" "$APP_DIR"
+              cd "$APP_DIR"
+            fi
+
+            if [ -f "$APP_DIR/globetrotter-monolith/.env.example" ] && [ ! -f "$APP_DIR/globetrotter-monolith/.env" ]; then
+              cp "$APP_DIR/globetrotter-monolith/.env.example" "$APP_DIR/globetrotter-monolith/.env"
+            fi
+
+            cd "$APP_DIR/globetrotter-monolith"
+            docker compose build
+            docker compose up -d --wait
+            curl -fsS http://localhost/health

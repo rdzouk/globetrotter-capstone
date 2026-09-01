@@ -278,6 +278,10 @@
     });
 
     document.addEventListener('DOMContentLoaded', () => {
+      if (!localStorage.getItem('gt_token')) {
+        window.location.href = 'login.html';
+        return;
+      }
       gtLoadFavoriteIds().then(loadDestinations);
     });
   </script>

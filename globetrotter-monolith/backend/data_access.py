@@ -13,7 +13,7 @@ per-user query filters by the user_id passed in (which callers only
 ever get from the authenticated request, never from client input).
 """
 from database import get_session
-from models import User, Destination, Itinerary, Favorite, Feedback
+from models import User, Destination, Itinerary, Favorite, Feedback, Comment
 
 
 # ---- Conversion helpers: ORM object -> plain dict ----
@@ -52,6 +52,19 @@ def _feedback_to_dict(f):
 
 def _favorite_to_dict(f):
     return {"id": f.id, "user_id": f.user_id, "destination_id": f.destination_id}
+
+
+def _comment_to_dict(c):
+    return {
+        "id": c.id,
+        "place_id": c.place_id,
+        "user_id": c.user_id,
+        "user_name": c.user.name if c.user else "Former user",
+        "parent_comment_id": c.parent_comment_id,
+        "message": c.message,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+        "replies": [],
+    }
 
 
 # ---- Users ----
@@ -190,6 +203,48 @@ def get_reviews_for_destination(destination_id):
                 "visited_date": i.review_visited_date,
             })
         return reviews
+
+
+# ---- Place comments ----
+
+def get_comment_by_id(comment_id):
+    with get_session() as s:
+        c = s.get(Comment, comment_id)
+        return _comment_to_dict(c) if c else None
+
+
+def get_comments_for_place(place_id):
+    with get_session() as s:
+        rows = (
+            s.query(Comment)
+            .filter(Comment.place_id == place_id)
+            .order_by(Comment.created_at.asc())
+            .all()
+        )
+        by_id = {}
+        roots = []
+        for row in rows:
+            by_id[row.id] = _comment_to_dict(row)
+        for row in rows:
+            item = by_id[row.id]
+            if row.parent_comment_id is not None and row.parent_comment_id in by_id:
+                by_id[row.parent_comment_id]["replies"].append(item)
+            else:
+                roots.append(item)
+        return roots
+
+
+def add_comment(place_id, user_id, parent_comment_id, message):
+    with get_session() as s:
+        c = Comment(
+            place_id=place_id,
+            user_id=user_id,
+            parent_comment_id=parent_comment_id,
+            message=message,
+        )
+        s.add(c)
+        s.flush()
+        return _comment_to_dict(c)
 
 
 # ---- App feedback (comments/critiques about the app itself) ----
