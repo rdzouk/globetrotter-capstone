@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useReducer, useState } from 'react';
 import { api } from './api';
-import { french } from './translations';
+import { formatLocalDate, formatNumber, localeFor, translateText } from './i18n';
+import { applyTheme, getThemePreference, resolveTheme } from './theme';
 
 const AppContext = createContext(null);
 
@@ -25,7 +26,9 @@ export function useResource(path) {
 export function AppProvider({ children }) {
   const [session, setSession] = useState(() => ({ token: localStorage.getItem('gt_token'), name: localStorage.getItem('gt_name') || '' }));
   const [language, setLanguage] = useState(() => localStorage.getItem('gt_lang') === 'fr' ? 'fr' : 'en');
-  const [theme, setTheme] = useState(() => localStorage.getItem('gt_theme') === 'dark' ? 'dark' : 'light');
+  const [themePreference, setTheme] = useState(getThemePreference);
+  const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const theme = resolveTheme(themePreference, systemDark);
   const [toast, setToast] = useState(null);
   const [tripVersion, updateTrips] = useReducer(value => value + 1, 0);
   const places = useResource('/destinations');
@@ -38,10 +41,21 @@ export function AppProvider({ children }) {
     document.documentElement.lang = language;
   }, [language]);
   useEffect(() => {
-    localStorage.setItem('gt_theme', theme);
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
-  const translate = text => language === 'fr' ? french[text] || text : text;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const update = event => setSystemDark(event.matches);
+    media.addEventListener('change', update);
+    const sync = event => { if (event.key === 'gt_theme') setTheme(getThemePreference()); };
+    window.addEventListener('storage', sync);
+    return () => { media.removeEventListener('change', update); window.removeEventListener('storage', sync); };
+  }, []);
+  useEffect(() => {
+    localStorage.setItem('gt_theme', themePreference);
+    applyTheme(theme);
+  }, [theme, themePreference]);
+  const translate = (text, values) => translateText(language, text, values);
+  const number = (value, options) => formatNumber(language, value, options);
+  const date = (value, options) => formatLocalDate(language, value, options);
+  const locale = localeFor(language);
 
   useEffect(() => {
     const expire = () => {
@@ -85,7 +99,7 @@ export function AppProvider({ children }) {
       setSavingFavorites(current => new Set([...current].filter(id => id !== place.id)));
     }
   }
-  return <AppContext.Provider value={{ session, signIn, signOut, updateName, places, favorites, favoriteIds, savingFavorites, toggleFavorite, toast, setToast, tripVersion, updateTrips, language, setLanguage, theme, setTheme, translate }}>{children}</AppContext.Provider>;
+  return <AppContext.Provider value={{ session, signIn, signOut, updateName, places, favorites, favoriteIds, savingFavorites, toggleFavorite, toast, setToast, tripVersion, updateTrips, language, setLanguage, theme, themePreference, setTheme, translate, number, date, locale }}>{children}</AppContext.Provider>;
 }
 
 export function useApp() { return useContext(AppContext); }

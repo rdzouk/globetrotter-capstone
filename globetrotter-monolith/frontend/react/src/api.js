@@ -15,12 +15,13 @@ export async function api(path, options = {}) {
   }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
+    if (response.status === 429) throw new Error('Too many requests. Please wait a moment and try again.');
     if (response.status === 401 && path !== '/login') {
       localStorage.removeItem('gt_token');
       localStorage.removeItem('gt_name');
       window.dispatchEvent(new Event('gt:session-expired'));
     }
-    throw new Error(data.errors?.join(', ') || data.error || `Request failed (${response.status}). Please try again.`);
+    throw new Error(data.errors?.join('\n') || data.error || 'Request failed. Please try again.');
   }
   return data;
 }

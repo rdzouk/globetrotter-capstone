@@ -4,7 +4,7 @@ GlobeTrotter Travel Assistant — Monolith Phase
 API Layer. Single Flask process, all business logic and data access
 imported as modules (not services).
 
-Production-hardened per ARCHITECTURE_AUDIT.md: environment-based
+Production configuration includes environment-based
 config (config.py), locked-down CORS, rate limiting on auth endpoints,
 security headers, structured logging with per-request IDs, and
 /health + /ready endpoints for Docker/load-balancer health checks.
@@ -15,6 +15,7 @@ Run (production):
     gunicorn -w 4 -b 0.0.0.0:5000 app:app
 """
 import logging
+import secrets
 import time
 import uuid
 from functools import wraps
@@ -25,12 +26,16 @@ from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.exceptions import HTTPException
+from google.auth.exceptions import GoogleAuthError
+from itsdangerous import BadData
+from sqlalchemy.exc import IntegrityError
 
 import config
 import auth
 import database
 import data_access as db
 import business_logic as logic
+import google_signin
 
 database.init_db()
 
@@ -40,7 +45,7 @@ logging.basicConfig(level=config.LOG_LEVEL, format="%(asctime)s %(levelname)s [%
 class _RequestIdFilter(logging.Filter):
     """Injects the current request's ID into every log record, so a
     single request's log lines can be grepped out of a shared log
-    stream — see ARCHITECTURE_AUDIT.md's Observability requirements."""
+    stream for operational diagnostics."""
     def filter(self, record):
         try:
             from flask import has_request_context
@@ -101,6 +106,8 @@ def finish_request(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if request.headers.get("Authorization") or request.path.startswith("/auth/") or request.path in ("/login", "/register"):
+        response.headers["Cache-Control"] = "no-store"
     if config.IS_PRODUCTION:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
@@ -205,7 +212,47 @@ def login():
         return jsonify({"error": "invalid credentials"}), 401
 
     token = auth.issue_token(user["id"], user["name"])
-    return jsonify({"token": token, "name": user["name"]}), 200
+    return jsonify({"token": token, "name": user["name"], "id": user["id"]}), 200
+
+
+@app.route("/auth/google/config", methods=["GET"])
+@limiter.limit("30 per minute")
+def google_config():
+    if not config.GOOGLE_CLIENT_ID:
+        return jsonify({"client_id": None}), 200
+    nonce = google_signin.create_nonce()
+    response = jsonify({"client_id": config.GOOGLE_CLIENT_ID, "nonce": nonce})
+    response.set_cookie("gt_google_nonce", nonce, max_age=600, httponly=True, secure=config.IS_PRODUCTION, samesite="Lax", path="/")
+    return response
+
+
+@app.route("/auth/google", methods=["POST"])
+@limiter.limit("10 per minute")
+def google_login():
+    if not config.GOOGLE_CLIENT_ID:
+        return jsonify({"error": "Google sign-in is not configured yet."}), 503
+    body = request.get_json(silent=True)
+    credential = body.get("credential") if isinstance(body, dict) else None
+    nonce = request.cookies.get("gt_google_nonce")
+    if not isinstance(credential, str) or not 1 <= len(credential) <= 10000 or not nonce:
+        return jsonify({"error": "Google sign-in verification failed. Please try again."}), 400
+    try:
+        claims = google_signin.verify_google_credential(credential, nonce)
+    except (ValueError, BadData):
+        return jsonify({"error": "Google sign-in verification failed. Please try again."}), 400
+    except GoogleAuthError:
+        return jsonify({"error": "Google sign-in is temporarily unavailable. Please try again."}), 503
+    name = claims.get("name")
+    name = name.strip()[:200] if isinstance(name, str) and name.strip() else claims["email"].split("@")[0]
+    try:
+        user, created = db.google_user(claims["sub"], claims["email"], name, auth.hash_password(secrets.token_urlsafe(48)))
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 409
+    except IntegrityError:
+        return jsonify({"error": "Account changed while signing in. Please try again."}), 409
+    response = jsonify({"token": auth.issue_token(user["id"], user["name"]), "name": user["name"], "id": user["id"]})
+    response.delete_cookie("gt_google_nonce", path="/")
+    return response, 201 if created else 200
 
 
 # ---------------------------------------------------------------------
@@ -326,16 +373,23 @@ def list_destination_comments(destination_id):
 
 @app.route("/destinations/<int:destination_id>/comments", methods=["POST"])
 @require_auth
+@limiter.limit("20 per minute")
 def create_destination_comment(destination_id):
     if not db.get_destination_by_id(destination_id):
         return jsonify({"error": "destination not found"}), 404
 
     body = request.get_json(silent=True) or {}
-    message = (body.get("message") or "").strip()
+    if not isinstance(body, dict) or not isinstance(body.get("message"), str):
+        return jsonify({"error": "message is required"}), 400
+    message = body["message"].strip()
     parent_comment_id = body.get("parent_comment_id")
 
     if not message:
         return jsonify({"error": "message is required"}), 400
+    if len(message) > 4000:
+        return jsonify({"error": "Comment must be at most 4000 characters."}), 400
+    if parent_comment_id is not None and (type(parent_comment_id) is not int or parent_comment_id <= 0):
+        return jsonify({"error": "parent comment not found"}), 400
 
     if parent_comment_id is not None:
         parent = db.get_comment_by_id(parent_comment_id)
@@ -486,6 +540,64 @@ def remove_favorite(destination_id):
     if not removed:
         return jsonify({"error": "not in favorites"}), 404
     return jsonify({"removed": True}), 200
+
+
+@app.route("/profile/activity", methods=["GET"])
+@require_auth
+def profile_activity():
+    return jsonify(db.get_profile_activity(request.user_id)), 200
+
+
+@app.route("/chat/messages", methods=["GET"])
+@require_auth
+def chat_messages():
+    before = request.args.get("before_id")
+    limit = request.args.get("limit", "50")
+    try:
+        before_id = int(before) if before is not None else None
+        limit = int(limit)
+        if not 1 <= limit <= 100 or (before_id is not None and before_id <= 0):
+            raise ValueError()
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid message pagination."}), 400
+    return jsonify(db.get_chat_messages(before_id, limit)), 200
+
+
+@app.route("/chat/messages", methods=["POST"])
+@require_auth
+@limiter.limit("20 per minute")
+def create_chat_message():
+    if not db.get_user_by_id(request.user_id):
+        return jsonify({"error": "user not found"}), 404
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or not isinstance(body.get("message"), str) or not body["message"].strip():
+        return jsonify({"error": "message is required"}), 400
+    message = body["message"].strip()
+    if len(message) > 2000:
+        return jsonify({"error": "message is too long (max 2000 characters)"}), 400
+    try:
+        client_id = str(uuid.UUID(body.get("client_id", "")))
+    except (ValueError, TypeError, AttributeError):
+        return jsonify({"error": "Invalid message identifier."}), 400
+    reply_id = body.get("reply_to_id")
+    if reply_id is not None and (type(reply_id) is not int or reply_id <= 0):
+        return jsonify({"error": "Message unavailable"}), 400
+    try:
+        message, created = db.add_chat_message(request.user_id, message, client_id, reply_id)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 404
+    except IntegrityError:
+        return jsonify({"error": "Message could not be saved. Please retry."}), 409
+    return jsonify(message), 201 if created else 200
+
+
+@app.route("/chat/messages/<int:message_id>", methods=["DELETE"])
+@require_auth
+def remove_chat_message(message_id):
+    message = db.delete_chat_message(request.user_id, message_id)
+    if not message:
+        return jsonify({"error": "Message unavailable"}), 404
+    return jsonify(message), 200
 
 
 if __name__ == "__main__":

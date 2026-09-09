@@ -480,3 +480,136 @@ def test_unknown_route_returns_404_not_500(client):
 def test_wrong_method_returns_405_not_500(client):
     resp = client.delete("/destinations")  # DELETE isn't defined on this route
     assert resp.status_code == 405
+
+
+def test_google_disabled_without_client_id(client, monkeypatch):
+    monkeypatch.setattr(flask_app_module.config, "GOOGLE_CLIENT_ID", "")
+    assert client.get("/auth/google/config").get_json() == {"client_id": None}
+    assert client.post("/auth/google", json={"credential": "not-a-token"}).status_code == 503
+
+
+def google_claims(client, monkeypatch, **overrides):
+    monkeypatch.setattr(flask_app_module.config, "GOOGLE_CLIENT_ID", "test-client.apps.googleusercontent.com")
+    nonce = client.get("/auth/google/config").get_json()["nonce"]
+    claims = {"sub": "google-subject", "iss": "https://accounts.google.com", "email": "google@example.com", "name": "Google Traveler", "email_verified": True, "nonce": nonce, **overrides}
+    def verify(credential, transport, audience):
+        assert audience == "test-client.apps.googleusercontent.com"
+        return claims
+    monkeypatch.setattr(flask_app_module.google_signin.id_token, "verify_oauth2_token", verify)
+    return claims
+
+
+def test_google_creates_and_reuses_identity(client, monkeypatch):
+    google_claims(client, monkeypatch)
+    response = client.post("/auth/google", json={"credential": "verified-test-token"})
+    assert response.status_code == 201
+    headers = {"Authorization": "Bearer " + response.get_json()["token"]}
+    assert client.get("/profile", headers=headers).get_json()["email"] == "google@example.com"
+    assert response.headers["Cache-Control"] == "no-store"
+    google_claims(client, monkeypatch)
+    assert client.post("/auth/google", json={"credential": "verified-test-token"}).status_code == 200
+    assert len(db.get_users()) == 1
+
+
+@pytest.mark.parametrize("overrides", [{"nonce": "wrong"}, {"email_verified": False}, {"iss": "https://attacker.invalid"}, {"sub": ""}])
+def test_google_rejects_invalid_claims(client, monkeypatch, overrides):
+    google_claims(client, monkeypatch, **overrides)
+    assert client.post("/auth/google", json={"credential": "invalid-claims"}).status_code == 400
+    assert db.get_users() == []
+
+
+def test_google_rejects_unverified_token(client, monkeypatch):
+    google_claims(client, monkeypatch)
+    def reject(*args, **kwargs):
+        raise ValueError("Invalid signature or audience")
+    monkeypatch.setattr(flask_app_module.google_signin.id_token, "verify_oauth2_token", reject)
+    assert client.post("/auth/google", json={"credential": "forged"}).status_code == 400
+
+
+def test_google_does_not_link_password_account_by_email(client, monkeypatch):
+    register(client, email="google@example.com")
+    google_claims(client, monkeypatch)
+    assert client.post("/auth/google", json={"credential": "verified-test-token"}).status_code == 409
+    assert len(db.get_users()) == 1
+
+
+def test_chat_authorship_replies_and_owned_deletion(client):
+    import uuid
+    register(client)
+    alice = auth_header(client)
+    message = client.post("/chat/messages", headers=alice, json={"message": "Hello Yaounde", "client_id": str(uuid.uuid4()), "user_id": 999}).get_json()
+    assert message["user_name"] == "Alice"
+    register(client, name="Bob", email="bob@example.com")
+    bob = auth_header(client, email="bob@example.com")
+    reply = client.post("/chat/messages", headers=bob, json={"message": "Welcome!", "client_id": str(uuid.uuid4()), "reply_to_id": message["id"]})
+    assert reply.status_code == 201
+    assert reply.get_json()["reply_to"]["user_name"] == "Alice"
+    assert client.delete(f'/chat/messages/{message["id"]}', headers=bob).status_code == 404
+    assert client.delete(f'/chat/messages/{message["id"]}', headers=alice).status_code == 200
+    listing = client.get("/chat/messages", headers=bob).get_json()["messages"]
+    assert listing[0]["deleted"] and listing[0]["message"] == ""
+    assert listing[1]["reply_to"]["message"] == ""
+    assert "email" not in listing[0]
+
+
+def test_chat_pagination_and_retry_deduplication(client):
+    import uuid
+    register(client)
+    headers = auth_header(client)
+    for index in range(3):
+        payload = {"message": f"Message {index}", "client_id": str(uuid.uuid4())}
+        assert client.post("/chat/messages", headers=headers, json=payload).status_code == 201
+        assert client.post("/chat/messages", headers=headers, json=payload).status_code == 200
+    latest = client.get("/chat/messages?limit=2", headers=headers).get_json()
+    assert latest["has_more"] and len(latest["messages"]) == 2
+    earlier = client.get(f'/chat/messages?before_id={latest["messages"][0]["id"]}', headers=headers).get_json()
+    assert len(earlier["messages"]) == 1
+    assert client.get("/chat/messages?limit=10000", headers=headers).status_code == 400
+
+
+def test_chat_requires_auth_and_valid_message(client):
+    import uuid
+    assert client.get("/chat/messages").status_code == 401
+    assert client.post("/chat/messages", json={}).status_code == 401
+    register(client)
+    headers = auth_header(client)
+    for message in ("   ", "a" * 2001, 123):
+        assert client.post("/chat/messages", headers=headers, json={"message": message, "client_id": str(uuid.uuid4())}).status_code == 400
+
+
+def test_profile_activity_and_comment_review_authors(client):
+    register(client)
+    alice = auth_header(client)
+    original = client.post("/destinations/1/comments", headers=alice, json={"message": "A lovely place"}).get_json()
+    trip = client.post("/itineraries", headers=alice, json={"destination_id": 1, "start_date": "2026-01-01", "end_date": "2026-01-01"}).get_json()
+    client.patch(f'/itineraries/{trip["id"]}/visit', headers=alice, json={"rating": 5, "comment": "Great visit", "visited_date": "2026-01-01"})
+    register(client, name="Bob", email="bob@example.com")
+    bob = auth_header(client, email="bob@example.com")
+    client.post("/destinations/1/comments", headers=bob, json={"message": "Thanks Alice", "parent_comment_id": original["id"]})
+    activity = client.get("/profile/activity", headers=alice).get_json()
+    assert activity["reviews"][0]["review"]["rating"] == 5
+    assert activity["comments"][0]["user_name"] == "Alice"
+    assert activity["replies"][0]["user_name"] == "Bob"
+    assert client.get("/profile/activity", headers=bob).get_json()["reviews"] == []
+    assert client.get("/profile/activity").status_code == 401
+    comments = client.get("/destinations/1/comments").get_json()
+    assert comments[0]["review"]["rating"] == 5
+
+
+def test_social_migration_preserves_existing_users(tmp_path):
+    import subprocess
+    from sqlalchemy import create_engine, inspect, text
+    backend_dir = os.path.dirname(os.path.dirname(__file__))
+    database_path = tmp_path / "migration.db"
+    environment = {**os.environ, "DATABASE_URL": f"sqlite:///{database_path}", "APP_ENV": "development"}
+    command = [sys.executable, "-m", "alembic", "upgrade"]
+    subprocess.run([*command, "29467b508f5e"], cwd=backend_dir, env=environment, check=True, capture_output=True)
+    engine = create_engine(environment["DATABASE_URL"])
+    with engine.begin() as connection:
+        connection.execute(text("INSERT INTO users (id, name, email, password_hash, preferences, created_at) VALUES (1, 'Existing User', 'existing@example.test', 'hash', '[]', '2026-01-01')"))
+    for _ in range(2):
+        subprocess.run([*command, "head"], cwd=backend_dir, env=environment, check=True, capture_output=True)
+    assert {"comments", "google_identities", "chat_messages"}.issubset(inspect(engine).get_table_names())
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT name FROM users WHERE id=1")).scalar() == "Existing User"
+    engine.dispose()

@@ -1,5 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+import { fileURLToPath } from 'node:url';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
@@ -17,7 +19,9 @@ const precache = {
 export default defineConfig({
   root: 'react',
   publicDir: '../static',
-  plugins: [react(), precache],
+  plugins: [react(), tailwindcss(), precache],
+  resolve: { alias: { '@': fileURLToPath(new URL('./react/src', import.meta.url)) } },
+  worker: { format: 'es' },
   build: { outDir: '../dist', emptyOutDir: true },
   server: { proxy: { '/api': { target: 'http://127.0.0.1:5000', changeOrigin: true, rewrite: path => path.replace(/^\/api/, '') } } },
 });

@@ -7,6 +7,7 @@ __pycache__/
 env/
 venv/
 .venv/
+.venv-*/
 ENV/
 *.egg
 *.egg-info/
@@ -20,12 +21,10 @@ build/
 # Environment variables
 .env
 .env.*
-
-# Docker
-.dockerignore
-
-# Data files (populated at runtime; keep only .gitkeep)
-data/*.json
+!.env.example
+*.db
+*.db-shm
+*.db-wal
 
 # IDE / editor
 .vscode/

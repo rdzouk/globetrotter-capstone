@@ -22,11 +22,6 @@ if config.DATABASE_URL:
     DATABASE_URL = config.DATABASE_URL
     engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 else:
-    # Local development / testing default — a real relational database
-    # (so the schema, constraints, and queries are genuinely exercised),
-    # just not PostgreSQL specifically. See ARCHITECTURE_AUDIT.md for
-    # why: no Postgres server was reachable in the environment this was
-    # built in. Swap in a real DATABASE_URL for actual production use.
     DATABASE_URL = "sqlite:///" + os.path.join(os.path.dirname(__file__), "globetrotter.db")
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 

@@ -1,19 +1,24 @@
 """
 Data Access Layer — PostgreSQL/SQLAlchemy version.
 
-This is a drop-in replacement for the original JSON-file
-data_access.py: every function has the exact same name, signature,
-and return shape (plain dicts, not ORM objects) as before, so
-business_logic.py and app.py needed ZERO changes for this migration.
-That's by design — see ARCHITECTURE_AUDIT.md's Compatibility
-Considerations section.
+Functions return plain dictionaries rather than ORM objects so the
+API and business logic remain independent of database sessions.
 
 Ownership is enforced here, not trusted from the caller: every
 per-user query filters by the user_id passed in (which callers only
 ever get from the authenticated request, never from client input).
 """
+from datetime import timezone
+
+from sqlalchemy import func
+from sqlalchemy.orm import aliased, joinedload
+
 from database import get_session
-from models import User, Destination, Itinerary, Favorite, Feedback, Comment
+from models import User, Destination, Itinerary, Favorite, Feedback, Comment, GoogleIdentity, ChatMessage
+
+
+def _utc_iso(value):
+    return value.replace(tzinfo=timezone.utc).isoformat() if value and value.tzinfo is None else value.isoformat() if value else None
 
 
 # ---- Conversion helpers: ORM object -> plain dict ----
@@ -62,7 +67,7 @@ def _comment_to_dict(c):
         "user_name": c.user.name if c.user else "Former user",
         "parent_comment_id": c.parent_comment_id,
         "message": c.message,
-        "created_at": c.created_at.isoformat() if c.created_at else None,
+        "created_at": _utc_iso(c.created_at),
         "replies": [],
     }
 
@@ -197,6 +202,7 @@ def get_reviews_for_destination(destination_id):
             user = s.get(User, i.user_id)
             reviews.append({
                 "itinerary_id": i.id,
+                "reviewer_id": i.user_id,
                 "reviewer_name": user.name if user else "Former user",
                 "rating": i.review_rating,
                 "comment": i.review_comment,
@@ -223,8 +229,12 @@ def get_comments_for_place(place_id):
         )
         by_id = {}
         roots = []
+        reviews = {}
+        for itinerary in s.query(Itinerary).filter(Itinerary.destination_id == place_id, Itinerary.review_rating.isnot(None)).order_by(Itinerary.created_at.desc()).all():
+            reviews.setdefault(itinerary.user_id, {"rating": itinerary.review_rating, "comment": itinerary.review_comment, "visited_date": itinerary.review_visited_date})
         for row in rows:
             by_id[row.id] = _comment_to_dict(row)
+            by_id[row.id]["review"] = reviews.get(row.user_id)
         for row in rows:
             item = by_id[row.id]
             if row.parent_comment_id is not None and row.parent_comment_id in by_id:
@@ -315,3 +325,82 @@ def remove_favorite(user_id, destination_id):
             return False
         s.delete(existing)
         return True
+
+
+def google_user(subject, email, name, password_hash):
+    with get_session() as session:
+        identity = session.query(GoogleIdentity).filter(GoogleIdentity.subject == subject).first()
+        if identity:
+            return _user_to_dict(identity.user), False
+        if session.query(User.id).filter(func.lower(User.email) == email.lower()).first():
+            raise ValueError("An account with this email already exists. Sign in with your password.")
+        user = User(name=name, email=email.lower(), password_hash=password_hash, preferences=[])
+        session.add(user)
+        session.flush()
+        session.add(GoogleIdentity(user_id=user.id, subject=subject))
+        session.flush()
+        return _user_to_dict(user), True
+
+
+def _chat_to_dict(message):
+    reply = message.reply_to
+    return {
+        "id": message.id, "user_id": message.user_id,
+        "user_name": message.user.name if message.user else "Former user",
+        "message": "" if message.deleted else message.message,
+        "deleted": message.deleted, "created_at": _utc_iso(message.created_at),
+        "client_id": message.client_id,
+        "reply_to": {
+            "id": reply.id, "user_id": reply.user_id,
+            "user_name": reply.user.name if reply.user else "Former user",
+            "message": "" if reply.deleted else reply.message, "deleted": reply.deleted,
+        } if reply else None,
+    }
+
+
+def get_chat_messages(before_id=None, limit=50):
+    with get_session() as session:
+        query = session.query(ChatMessage).options(joinedload(ChatMessage.user), joinedload(ChatMessage.reply_to).joinedload(ChatMessage.user))
+        if before_id is not None:
+            query = query.filter(ChatMessage.id < before_id)
+        rows = query.order_by(ChatMessage.id.desc()).limit(limit + 1).all()
+        return {"messages": [_chat_to_dict(message) for message in reversed(rows[:limit])], "has_more": len(rows) > limit}
+
+
+def add_chat_message(user_id, message, client_id, reply_to_id=None):
+    with get_session() as session:
+        existing = session.query(ChatMessage).filter_by(user_id=user_id, client_id=client_id).first()
+        if existing:
+            return _chat_to_dict(existing), False
+        if reply_to_id is not None:
+            reply = session.get(ChatMessage, reply_to_id)
+            if not reply or reply.deleted:
+                raise ValueError("Message unavailable")
+        record = ChatMessage(user_id=user_id, message=message, client_id=client_id, reply_to_id=reply_to_id)
+        session.add(record)
+        session.flush()
+        return _chat_to_dict(record), True
+
+
+def delete_chat_message(user_id, message_id):
+    with get_session() as session:
+        message = session.query(ChatMessage).filter_by(id=message_id, user_id=user_id).first()
+        if not message:
+            return None
+        message.deleted = True
+        message.message = ""
+        session.flush()
+        return _chat_to_dict(message)
+
+
+def get_profile_activity(user_id):
+    with get_session() as session:
+        reviews = session.query(Itinerary).options(joinedload(Itinerary.destination)).filter(Itinerary.user_id == user_id, Itinerary.review_rating.isnot(None)).order_by(Itinerary.created_at.desc()).limit(50).all()
+        comments = session.query(Comment).options(joinedload(Comment.destination), joinedload(Comment.user)).filter(Comment.user_id == user_id).order_by(Comment.created_at.desc()).limit(50).all()
+        parent = aliased(Comment)
+        replies = session.query(Comment, parent).join(parent, Comment.parent_comment_id == parent.id).filter(parent.user_id == user_id, Comment.user_id != user_id).order_by(Comment.created_at.desc()).limit(50).all()
+        return {
+            "reviews": [{**_itinerary_to_dict(review), "destination_name": review.destination.name} for review in reviews],
+            "comments": [{**_comment_to_dict(comment), "destination_name": comment.destination.name} for comment in comments],
+            "replies": [{**_comment_to_dict(reply), "destination_name": reply.destination.name, "parent_message": original.message} for reply, original in replies],
+        }

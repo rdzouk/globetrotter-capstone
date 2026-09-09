@@ -45,6 +45,7 @@ def _require(name, dev_default=None):
 
 
 JWT_SECRET = _require("JWT_SECRET", dev_default="dev-secret-change-me-in-production")
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 
 DATABASE_URL = os.environ.get("DATABASE_URL")  # None until the Postgres migration lands
 

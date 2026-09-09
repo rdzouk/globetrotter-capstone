@@ -2,4 +2,3 @@ node_modules/
 dist/
 .env.local
 test-results/
-!.dockerignore

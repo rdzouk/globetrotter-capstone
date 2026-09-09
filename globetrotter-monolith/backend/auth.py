@@ -2,9 +2,8 @@
 Authentication
 --------------
 Simple JWT-based auth. Passwords are hashed with Werkzeug's
-generate_password_hash (PBKDF2). The signing secret comes from
-config.py, which fails loudly in production if JWT_SECRET isn't set —
-see ARCHITECTURE_AUDIT.md, Critical Problem #4.
+generate_password_hash. The signing secret comes from config.py,
+which fails at startup in production if JWT_SECRET is not set.
 """
 import datetime
 import jwt

@@ -57,6 +57,7 @@ systemctl restart sshd
 ```bash
 mkdir -p /opt/globetrotter && cd /opt/globetrotter
 git clone <your-repo-url> .
+cd globetrotter-monolith
 cp .env.example .env
 nano .env   # fill in real JWT_SECRET, POSTGRES_PASSWORD, CORS_ORIGINS
 ```

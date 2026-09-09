@@ -3,7 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { AppProvider } from './state';
+import { applyTheme, getThemePreference, resolveTheme } from './theme';
 import './styles.css';
+
+applyTheme(resolveTheme(getThemePreference(), window.matchMedia('(prefers-color-scheme: dark)').matches));
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

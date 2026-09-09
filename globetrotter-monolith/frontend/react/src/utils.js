@@ -1,7 +1,7 @@
 export function filterPlaces(places, { query = '', category = '', neighborhood = '', tag = '', sort = 'rating' } = {}) {
   const search = query.trim().toLocaleLowerCase();
   const filtered = places.filter(place =>
-    (!search || [place.name, place.neighborhood, place.description, place.address, ...(place.tags || [])].join(' ').toLocaleLowerCase().includes(search)) &&
+    (!search || [place.name, place.neighborhood, place.description, place.searchText, place.address, ...(place.tags || [])].join(' ').toLocaleLowerCase().includes(search)) &&
     (!category || place.category === category) &&
     (!neighborhood || place.neighborhood === neighborhood) &&
     (!tag || place.tags?.includes(tag)),

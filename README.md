@@ -1,135 +1,59 @@
-# GlobeTrotter – Travel Assistant
+# GlobeTrotter
 
-GlobeTrotter is a **monolithic Flask application** that serves as the starting point for a semester-long capstone project.  
-Students build the monolith first, then refactor it into microservices, and finally deploy it to the cloud with resilience patterns using Docker, Kubernetes, and cloud-native tooling.
+A responsive React application for exploring Yaounde, saving places, planning visits, and sharing reviews.
 
----
+## Supported Application
 
-## Project Structure
+- `globetrotter-monolith/frontend/`: React 19 and Vite, the only user interface.
+- `globetrotter-monolith/backend/`: Flask JSON API and SQLAlchemy persistence.
+- `globetrotter-monolith/nginx/`: production web server and API proxy.
+- `globetrotter-monolith/scripts/`: database backup and restore.
+- `.github/workflows/`: frontend/backend tests and deployment.
 
-```
-.
-├── app/
-│   ├── __init__.py         # Flask app factory
-│   ├── models.py           # Data models and JSON file I/O
-│   ├── auth.py             # Registration, login, JWT handling
-│   ├── destinations.py     # Destination search endpoint
-│   ├── recommendations.py  # Personalised recommendations endpoint
-│   ├── itineraries.py      # Create / list itineraries
-│   └── main.py             # App entry point
-├── data/
-│   ├── destinations.json   # Static destination catalogue (seed data)
-│   ├── users.json          # Created at runtime
-│   └── itineraries.json    # Created at runtime
-├── tests/                  # Placeholder for future tests
-├── Dockerfile
-├── docker-compose.yml
-├── requirements.txt
-└── README.md
+React runs in the browser. Flask remains necessary for authentication, private account data, and database access. Database credentials must never be moved into React code. The existing application directory name is retained to avoid breaking VPS paths.
+
+## Local Development
+
+Use Node.js 22+ and Python 3.11+. From the repository root, in separate terminals:
+
+```powershell
+Set-Location globetrotter-monolith/backend
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe seed_destinations.py
+.\.venv\Scripts\python.exe app.py
 ```
 
----
-
-## REST API
-
-| Method | Endpoint            | Auth required | Description                              |
-|--------|---------------------|---------------|------------------------------------------|
-| POST   | `/register`         | No            | Register a new user                      |
-| POST   | `/login`            | No            | Authenticate and receive a JWT token     |
-| GET    | `/destinations`     | No            | Search the destination catalogue         |
-| GET    | `/recommendations`  | Yes (JWT)     | Get personalised recommendations        |
-| POST   | `/itineraries`      | Yes (JWT)     | Create a new itinerary                   |
-| GET    | `/itineraries`      | Yes (JWT)     | List all itineraries for the logged-in user |
-
-Protected routes expect the header:  
-`Authorization: Bearer <your-token>`
-
-### Example requests
-
-```bash
-# Register
-curl -X POST http://localhost:5000/register \
-  -H "Content-Type: application/json" \
-  -d '{"username": "alice", "password": "s3cr3t", "preferences": ["beach", "food"]}'
-
-# Login
-curl -X POST http://localhost:5000/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "alice", "password": "s3cr3t"}'
-# Save the returned token: TOKEN=<value from .token field>
-
-# Search destinations
-curl "http://localhost:5000/destinations?tag=beach&max_cost=100"
-
-# Personalised recommendations
-curl http://localhost:5000/recommendations \
-  -H "Authorization: Bearer $TOKEN"
-
-# Create an itinerary
-curl -X POST http://localhost:5000/itineraries \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"title": "Beach Escape", "destinations": ["Bali"], "start_date": "2025-07-01", "end_date": "2025-07-14"}'
-
-# List itineraries
-curl http://localhost:5000/itineraries \
-  -H "Authorization: Bearer $TOKEN"
+```powershell
+Set-Location globetrotter-monolith/frontend
+npm ci
+npm run dev
 ```
 
----
+Open http://localhost:5173. React sends `/api/` requests through Vite to Flask on port 5000. On macOS/Linux use `.venv/bin/python` instead.
 
-## Running Locally
+## Verification
 
-### Prerequisites
-- Python 3.9+
-- pip
-
-```bash
-# 1. Install dependencies
-pip install -r requirements.txt
-
-# 2. Start the server
-python app/main.py
+```powershell
+globetrotter-monolith/backend/.venv/Scripts/python.exe -m pytest globetrotter-monolith/backend/tests -q
+npm --prefix globetrotter-monolith/frontend test
+npm --prefix globetrotter-monolith/frontend run test:e2e
+npm --prefix globetrotter-monolith/frontend run build
 ```
 
-The API will be available at `http://localhost:5000`.
+## Configuration and Deployment
 
----
+The backend uses SQLite locally and PostgreSQL in production. Keep the existing database, backend virtual environment, and any private `.env` files. The `.env.example` templates document required settings without containing deployment secrets. `VITE_API_BASE_URL` is optional public frontend configuration, never a place for credentials.
 
-## Running with Docker
+Production commands run from `globetrotter-monolith/`, using its Docker Compose file. Nginx serves the React build and proxies `/api/` to Flask. Configure your domain, TLS certificates, and production environment before running:
 
-```bash
-# Build and start
-docker-compose up --build
-
-# Stop
-docker-compose down
+```sh
+docker compose build
+docker compose run --rm backend alembic upgrade head
+docker compose run --rm backend python seed_destinations.py
+docker compose up -d
 ```
 
-The `data/` directory is mounted into the container, so JSON files persist between runs.
+See [frontend instructions](globetrotter-monolith/frontend/README.md), [deployment](globetrotter-monolith/docs/DEPLOYMENT.md), [security](globetrotter-monolith/docs/SECURITY.md), and [backups](globetrotter-monolith/docs/BACKUPS.md).
 
----
-
-## Data Storage
-
-All data is persisted in plain JSON files inside the `data/` directory:
-
-| File                    | Purpose                              |
-|-------------------------|--------------------------------------|
-| `data/destinations.json`| Static catalogue of travel destinations (seed data) |
-| `data/users.json`       | Registered users (created at runtime) |
-| `data/itineraries.json` | User itineraries (created at runtime) |
-
-> **Note:** `data/*.json` (except `destinations.json`) are excluded from version control via `.gitignore`.
-
----
-
-## Configuration
-
-| Environment Variable | Default                              | Description           |
-|----------------------|--------------------------------------|-----------------------|
-| `SECRET_KEY`         | `globetrotter-secret-change-in-prod` | JWT signing key – **must be overridden in production** |
-| `FLASK_DEBUG`        | `0`                                  | Set to `1` to enable Flask debug mode (development only) |
-| `PORT`               | `5000`                               | Port the app listens on |
-
-> **Important:** Always set `SECRET_KEY` to a long, random value in production (e.g. `python -c "import secrets; print(secrets.token_hex(32))"`).
+The pre-React pages, root API prototype, JSON microservices, and obsolete deployment scripts have been removed. Existing `.html` bookmarks continue to redirect inside React.
