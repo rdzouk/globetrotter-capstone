@@ -6,8 +6,8 @@ neighborhoods). Web-only — no mobile app.
 
 ```
 globetrotter-monolith/
-├── frontend/         Static site (HTML/CSS/JS, no build step) — served
-│                       directly by Nginx (see nginx/nginx.conf)
+├── frontend/         React/Vite application, compiled and served
+│                       by Nginx (see frontend/README.md)
 ├── backend/          Flask API — PostgreSQL (SQLite in local dev),
 │                       Redis-backed rate limiting, Gunicorn, Alembic
 │                       migrations. See its own detailed README below.
@@ -36,10 +36,14 @@ alembic upgrade head            # create the schema (SQLite by default)
 python seed_destinations.py      # load the 58 places
 python app.py                     # http://localhost:5000
 
-# Frontend (separate terminal) — any static server works, e.g.:
+# Frontend (separate terminal) - Node.js 22+
 cd frontend
-python3 serve_local.py          # http://localhost:8080 — no dependencies, one command
+npm ci
+npm run dev                    # http://localhost:5173; /api proxies to Flask
 ```
+
+The frontend is now React with responsive desktop and phone layouts.
+See [frontend/README.md](frontend/README.md) for build, deployment, and migration details.
 
 ## Quick start — full production stack (Docker Compose)
 
@@ -110,10 +114,9 @@ Browser (HTML/JS pages) → API (Flask routes, app.py)
 Auth (auth.py) — password hashing + JWT issue/verify, used by the API layer
 ```
 
-The frontend is a plain static site (no build step, no server-side
-rendering) plus
-vanilla JS in `static/app.js` that calls the same JSON API endpoints
-you'd hit with curl. The JWT is stored in the browser's `localStorage`
+The frontend is a React single-page application built with Vite and
+served as static assets by Nginx. It calls the same JSON API endpoints
+through `/api/`. The JWT is stored in the browser's `localStorage`
 after login and sent as `Authorization: Bearer <token>` on every
 subsequent request — same auth flow either way.
 
