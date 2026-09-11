@@ -4,7 +4,10 @@
 
 - Passwords hashed with Werkzeug's PBKDF2 implementation (`generate_password_hash`/`check_password_hash`) — never stored or logged in plaintext, never returned in any API response.
 - JWT (HS256), 24-hour expiry, signed with `JWT_SECRET` (required env var in production — the app refuses to start without it, see `config.py`).
-- Every non-public endpoint verifies the JWT independently via `require_auth` — no session state on the server.
+- Every application data endpoint verifies the JWT independently via `require_auth`, including destinations, nearby/neighborhood information, reviews, comments, feedback and fares. Registration, login, password recovery, Google authentication, health/readiness and CORS preflight are public. Server-side account security records hold the role and session version; missing records retain the legacy user/version-zero behavior.
+- The frontend validates a saved token with `/profile` before rendering app navigation or loading catalogue data. Guests are redirected to login, preserving the requested URL. Sign-out and token changes synchronize across tabs. Authentication errors and authenticated responses are marked `Cache-Control: no-store`.
+- Password recovery uses a 256-bit random token, stores only its SHA-256 digest, expires after 15 minutes, and conditionally changes the password only if its fingerprint still matches. A successful reset deletes all recovery tokens and increments the session version, rejecting all previous JWTs. Tokens are sent only through configured encrypted SMTP or Twilio HTTPS, never API responses/logs; the trusted return origin comes from configuration. Browser fragments are cleared immediately. Requests have neutral account-existence responses, per-IP rate limits and a one-minute per-account delivery cooldown. Synchronous delivery timing is not guaranteed uniform; use a durable mail/SMS queue before high-volume public operation. Ambiguous normalized phone records do not receive a reset link.
+- `/admin/*` requires a current database-backed administrator role on every request. Roles are provisioned through an explicit server CLI command, not registration/profile fields. Role changes revoke older sessions. Destination and fare edits use version checks; stale drafts return 409. Archive preserves history and is not a confidentiality boundary.
 
 ## Authorization / IDOR protection
 
@@ -21,6 +24,8 @@ Flask-Limiter, backed by Redis in production (`REDIS_URL`), in-memory for local 
 - `POST /login`: 10/minute per IP
 - `POST /register`: 5/minute per IP
 - `POST /feedback`: 10/minute per IP
+- `POST /auth/recovery`: 5/minute and 20/hour per IP
+- `POST /auth/recovery/reset`: 5/minute and 30/hour per IP
 
 Verified live: hammering `/login` past the limit returns `429` with normal traffic to other endpoints unaffected.
 
@@ -48,7 +53,7 @@ Not applicable via string concatenation — all queries go through SQLAlchemy's 
 
 ## XSS
 
-The frontend is vanilla JS building DOM via template strings assigned to `innerHTML` in a few places (card rendering). Data displayed is either from the trusted backend (place names/descriptions the team controls) or from other users (reviews, feedback messages, itinerary notes) — **this is a known gap**: user-supplied text (review comments, feedback messages) is not currently HTML-escaped before insertion into the DOM. Recommended fix before handling untrusted production traffic at scale: escape user-supplied string fields (`comment`, `message`, `notes`) before rendering, e.g. via a small `escapeHtml()` helper wrapping any user-authored text.
+The React frontend renders user and admin text as text, not raw HTML. Destination photo and fare-source URLs are validated before persistence. Do not introduce `dangerouslySetInnerHTML` for descriptions, reviews, chat or audit entries. API authorization remains mandatory regardless of frontend rendering. Tokens in localStorage remain exposed to any successful same-origin script injection; this is a residual risk, not solved by HTML escaping alone.
 
 ## CSRF
 
@@ -61,9 +66,8 @@ The catch-all error handler (`handle_unexpected_error`) never returns Python tra
 ## Known gaps / not yet implemented
 
 - **Argon2id/bcrypt** — brief recommends these over PBKDF2; not yet upgraded (PBKDF2 via Werkzeug is still an acceptable production choice, just not the strongest available).
-- **Refresh tokens / logout-side revocation** — JWTs currently just expire after 24h; there's no server-side revocation list, so a stolen token remains valid until it expires. A `refresh_tokens` table and short-lived (e.g. 15 min) access tokens + revocable refresh tokens would close this gap.
-- **XSS escaping of user-generated text** — see above.
-- **Audit logging** — the `AuditLog` model exists in `models.py` but isn't yet written to from any endpoint (login attempts, account changes). Wiring it up is a small, low-risk follow-up.
+- **Refresh tokens / logout-side revocation** — reset and role changes now revoke all prior JWTs through account session versions. Ordinary logout still only clears client storage; a stolen token remains valid until expiry or a security-version change. Per-device revocation and short-lived refresh sessions are not implemented.
+- **Audit coverage** — admin destination/fare edits, role changes and successful password resets are recorded with actor/time and changed field names, never credentials. Ordinary login attempts and other actions are not yet comprehensively audited.
 - **Request size limits** — not yet explicitly configured at the Flask level (Nginx's `client_max_body_size 2M` provides a coarse limit at the proxy).
 
 ## Reporting

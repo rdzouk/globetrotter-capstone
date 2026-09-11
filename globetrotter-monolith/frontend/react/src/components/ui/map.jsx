@@ -905,13 +905,16 @@ function MapPopup({
     if (!map) return;
 
     const onCloseProp = () => onCloseRef.current?.();
+    const onMapRemove = () => popup.off("close", onCloseProp);
 
+    map.on("remove", onMapRemove);
     popup.on("close", onCloseProp);
 
     popup.setDOMContent(container);
     popup.addTo(map);
 
     return () => {
+      map.off("remove", onMapRemove);
       popup.off("close", onCloseProp);
       if (popup.isOpen()) {
         popup.remove();

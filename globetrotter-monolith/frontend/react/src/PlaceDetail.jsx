@@ -27,7 +27,7 @@ const MapView = lazy(() => import("./MapView"));
 
 export default function PlaceDetail({ onPlan }) {
   const { id } = useParams();
-  const { places, session, translate, number, date } = useApp();
+  const { places, session, translate, number, date, language } = useApp();
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const reviews = useResource(`/destinations/${id}/reviews`);
@@ -35,7 +35,9 @@ export default function PlaceDetail({ onPlan }) {
   const nearby = useResource(`/destinations/${id}/nearby?limit=3`);
   const tab = ['about', 'reviews', 'comments', 'map'].includes(params.get('tab')) ? params.get('tab') : 'about';
   function setTab(value) { setParams(current => { const next = new URLSearchParams(current); next.set('tab', value); return next; }, { replace: true }); }
-  const place = (places.data || []).find((item) => item.id === Number(id));
+  const listedPlace = (places.data || []).find((item) => item.id === Number(id));
+  const archivedPlace = useResource(!places.loading && !places.error && !listedPlace ? `/destinations/${id}` : null);
+  const place = listedPlace || archivedPlace.data;
   const neighborhood = useResource(
     place?.neighborhood
       ? `/neighborhoods/${encodeURIComponent(place.neighborhood)}`
@@ -48,7 +50,7 @@ export default function PlaceDetail({ onPlan }) {
     element?.scrollIntoView({ block: 'center', behavior: 'instant' });
     if (target === 'comment-form') element?.querySelector('textarea')?.focus({ preventScroll: true });
   }, [location.hash, tab, comments.data, reviews.data, places.loading]);
-  if (places.loading) return <Loading />;
+  if (places.loading || archivedPlace.loading) return <Loading />;
   if (places.error) return <ResourceError resource={places} />;
   if (!place)
     return (
@@ -82,12 +84,13 @@ export default function PlaceDetail({ onPlan }) {
         <div className="detail-actions">
           <DestinationActions place={place} />
           <SaveButton place={place} />
-          <button className="button" onClick={() => onPlan(place)}>
+          <button className="button" disabled={place.active === false} onClick={() => onPlan(place)}>
             <CalendarPlus size={18} />
             {translate("Plan a visit")}
           </button>
         </div>
       </div>
+      {place.active === false && <p className="archived-notice" role="status">{translate('This destination is archived and unavailable for new plans.')}</p>}
       <div className="detail-photo">
         <PlaceImage place={place} />
         <div className="photo-caption">
@@ -149,7 +152,7 @@ export default function PlaceDetail({ onPlan }) {
             {tab === "about" && (
               <>
                 <h2>{translate("A closer look")}</h2>
-                <p className="detail-description">{translate(place.description)}</p>
+                <p className="detail-description">{language === 'fr' && place.description_fr ? place.description_fr : translate(place.description)}</p>
                 <div className="tag-list">
                   {place.tags?.map((tag) => (
                     <span key={tag}>{translate(tag.replaceAll("-", " "))}</span>

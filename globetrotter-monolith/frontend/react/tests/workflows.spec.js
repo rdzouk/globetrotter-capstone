@@ -6,6 +6,12 @@ const destinations = [
   { id: 44, name: 'Mont Febe', category: 'nature', neighborhood: 'Mont Febe', address: 'Yaounde', lat: 3.91, lng: 11.49, rating: 4.8, rating_count: 50, price_level: 1, tags: ['nature', 'outdoor'], description: 'Small, highly-rated Odza hotel known for cleanliness and a warm welcome.' },
 ];
 
+const farePolicies = [
+  { id: 'yaounde-shared', city: 'Yaounde', mode: 'taxi', model: 'reference', basis: 'passenger', base_min: 350, base_max: 400, per_km_min: 0, per_km_max: 0, source_name: 'Tariff reference', source_url: 'https://example.test/tariffs', source_date: '2024-02-26', checked_at: '2026-09-11', notes_en: 'Reported day and night ceilings.', notes_fr: 'Plafonds de jour et de nuit.', source_type: 'reported_tariff', active: true, version: 0 },
+  { id: 'yaounde-private', city: 'Yaounde', mode: 'private', model: 'distance', basis: 'vehicle', base_min: 350, base_max: 500, per_km_min: 150, per_km_max: 300, source_name: 'Numbeo (crowdsourced)', source_url: 'https://www.numbeo.com/taxi-fare/in/Yaounde-Cameroon', source_date: '2026-06-19', checked_at: '2026-09-11', notes_en: 'Planning range, not a quote.', notes_fr: 'Fourchette indicative, pas un devis.', source_type: 'crowdsourced', active: true, version: 0 },
+  { id: 'yaounde-moto', city: 'Yaounde', mode: 'moto', model: 'quote', basis: 'passenger', base_min: 0, base_max: 0, per_km_min: 0, per_km_max: 0, source_name: 'Yango Cameroon', source_url: 'https://yango.com/en_cm/', source_date: null, checked_at: '2026-09-11', notes_en: 'Ask the provider.', notes_fr: 'Demandez au prestataire.', source_type: 'provider', active: true, version: 0 },
+];
+
 async function mockApi(page, authenticated = true) {
   const state = { favorites: [], trips: [], comments: [], feedback: [], messages: [], calls: [], activity: { reviews: [], comments: [], replies: [] }, profile: { id: 1, name: 'Test Traveler', email: 'traveler@example.test', phone: null, preferences: ['outdoor'] } };
   await page.addInitScript(({ authenticated }) => {
@@ -21,6 +27,7 @@ async function mockApi(page, authenticated = true) {
     state.calls.push({ path, method, body, authorization: request.headers().authorization });
     const respond = (data, status = 200) => route.fulfill({ status, json: data });
     if (path === '/destinations') return respond(destinations);
+    if (path === '/fares') return respond(farePolicies);
     if (path === '/auth/google/config') return respond({ client_id: null });
     if (path === '/auth/google') return respond({ id: 1, token: 'test-session', name: state.profile.name }, 201);
     if (path === '/login') return body.password === 'wrong' ? respond({ error: 'invalid credentials' }, 401) : respond({ token: 'test-session', name: state.profile.name });
@@ -52,6 +59,12 @@ async function mockApi(page, authenticated = true) {
       return respond(state.trips);
     }
     if (/^\/itineraries\/\d+\/visit$/.test(path)) { const trip = state.trips.find(item => item.id === Number(path.split('/')[2])); Object.assign(trip, { visited: true, review: body }); return respond(trip); }
+    if (/^\/itineraries\/\d+$/.test(path)) {
+      const trip = state.trips.find(item => item.id === Number(path.split('/')[2]));
+      if (method === 'DELETE') { state.trips = state.trips.filter(item => item !== trip); return respond({ removed: true }); }
+      Object.assign(trip, body);
+      return respond(trip);
+    }
     if (path.endsWith('/reviews')) return respond(state.trips.filter(trip => trip.visited).map(trip => ({ ...trip.review, itinerary_id: trip.id, reviewer_name: state.profile.name })));
     if (path.endsWith('/comments')) {
       if (method === 'POST') {
@@ -70,8 +83,57 @@ async function mockApi(page, authenticated = true) {
   return state;
 }
 
+test('login gates the app, preserves the requested page, and blocks access after sign-out', async ({ page }, testInfo) => {
+  const state = await mockApi(page, false);
+  for (const path of ['/', '/map?place=1&directions=1', '/places/1?tab=comments#comment-form', '/feedback', '/planner', '/chat', '/?category=restaurant']) {
+    await page.goto(path);
+    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.getByRole('heading', { name: 'Good to see you again.' })).toBeVisible();
+    await expect(page.locator('.place-card, .map-section')).toHaveCount(0);
+    await expect(page.locator('.sidebar, .bottom-nav')).toHaveCount(0);
+  }
+  expect(state.calls.every(call => call.path === '/auth/google/config')).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('login.png'), fullPage: true });
+  const originalViewport = page.viewportSize();
+  await page.setViewportSize({ width: 320, height: 780 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('login-320.png'), fullPage: true });
+  await page.setViewportSize(originalViewport);
+  await page.getByRole('textbox', { name: 'Email address', exact: true }).fill('traveler@example.test');
+  await page.getByLabel('Password', { exact: true }).fill('test-password');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page).toHaveURL(/\/\?category=restaurant$/);
+  await expect(page.locator('.place-card')).toHaveCount(1);
+  await page.goto('/profile');
+  await page.locator('main').getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole('heading', { name: 'Good to see you again.' })).toBeVisible();
+});
+
+test('saved sessions must be verified and can recover from verification errors', async ({ page }) => {
+  const state = await mockApi(page);
+  let unavailable = true;
+  await page.route('**/api/profile', route => unavailable ? route.fulfill({ status: 503, json: { error: 'Temporarily unavailable' } }) : route.fallback());
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Unable to verify your session' })).toBeVisible();
+  await expect(page.locator('.place-card, .sidebar')).toHaveCount(0);
+  expect(state.calls.filter(call => call.path === '/destinations')).toHaveLength(0);
+  unavailable = false;
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.locator('.place-card')).toHaveCount(2);
+  await page.route('**/api/profile', route => route.fulfill({ status: 401, json: { error: 'Invalid token' } }));
+  await page.reload();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.locator('.place-card, .sidebar')).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem('gt_token'))).toBeNull();
+});
+
 test('browse, filter, preserve query, and recover from an empty search', async ({ page }) => {
-  await mockApi(page, false);
+  await mockApi(page);
   await page.goto('/');
   await expect(page.locator('.place-card')).toHaveCount(2);
   await page.getByRole('button', { name: 'Eat & drink', exact: true }).click();
@@ -84,7 +146,7 @@ test('browse, filter, preserve query, and recover from an empty search', async (
   await page.getByRole('button', { name: 'Clear', exact: true }).click();
   await expect(page.locator('.place-card')).toHaveCount(1);
   await page.getByRole('button', { name: 'Save Tassa', exact: true }).click();
-  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole('button', { name: 'Unsave Tassa', exact: true })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('save a place, plan a trip, view the week, and review a visit', async ({ page }) => {
@@ -115,6 +177,139 @@ test('save a place, plan a trip, view the week, and review a visit', async ({ pa
   await expect(page.locator('.place-card')).toHaveCount(1);
   await page.getByRole('button', { name: 'Unsave Tassa', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Your collection starts here' })).toBeVisible();
+});
+
+test('plans can be edited and cancelled from trips and the weekly planner', async ({ page }) => {
+  const state = await mockApi(page);
+  state.trips.push({ id: 1, destination_id: 1, start_date: localDate(), end_date: localDate(), time_slot: '09:00-11:00', transport_mode: 'taxi', notes: 'Original', visited: false });
+  await page.goto('/itineraries');
+  await page.getByRole('button', { name: 'Edit plan', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Notes', exact: true })).toHaveValue('Original');
+  await page.getByRole('textbox', { name: 'Notes', exact: true }).fill('Meet at the entrance');
+  await page.getByLabel('Time slot', { exact: true }).fill('10:00-12:00');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await expect(page.locator('.trip-card')).toContainText('Meet at the entrance');
+  await page.goto('/planner');
+  await expect(page.locator('.planner-trip')).toContainText('10:00-12:00');
+  await page.getByRole('button', { name: 'Cancel plan', exact: true }).click();
+  await page.getByRole('button', { name: 'Keep plan', exact: true }).click();
+  expect(state.trips).toHaveLength(1);
+  await page.getByRole('button', { name: 'Cancel plan', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel plan', exact: true }).click();
+  await expect(page.locator('.planner-trip')).toHaveCount(0);
+  expect(state.trips).toHaveLength(0);
+});
+
+test('administrators manage destinations, fare sources and audit history while ordinary users are blocked', async ({ page }, testInfo) => {
+  const state = await mockApi(page);
+  const records = destinations.map(place => ({ ...place, active: true, content_version: 0, image_url: `/images/places/${place.id}.jpg`, description_fr: 'Un lieu a decouvrir.' }));
+  const policies = structuredClone(farePolicies);
+  const audit = [];
+  let conflict = false;
+  await page.route('**/api/destinations', route => route.fulfill({ json: records.filter(place => place.active) }));
+  await page.route('**/api/admin/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    const body = route.request().postDataJSON();
+    if (path.endsWith('/overview')) return route.fulfill({ json: { counts: { destinations: records.length, users: 1, plans: 0, messages: 0 }, recovery: { email: false, phone: false } } });
+    if (path.endsWith('/destinations')) {
+      if (body) { const record = { ...body, id: 50, content_version: 1 }; records.push(record); return route.fulfill({ status: 201, json: record }); }
+      return route.fulfill({ json: records });
+    }
+    if (/\/destinations\/\d+$/.test(path)) {
+      if (conflict) { conflict = false; return route.fulfill({ status: 409, json: { error: 'This record changed. Reload it before saving.' } }); }
+      const record = records.find(item => item.id === Number(path.split('/').pop()));
+      Object.assign(record, body, { content_version: record.content_version + 1 });
+      audit.push({ id: audit.length + 1, event: 'destination_updated', actor: 'Test Traveler', detail: JSON.stringify({ entity: `destination:${record.id}` }), created_at: '2026-09-11T10:00:00Z' });
+      return route.fulfill({ json: record });
+    }
+    if (path.endsWith('/fares')) return route.fulfill({ json: policies });
+    if (path.includes('/fares/')) { const policy = policies.find(item => item.id === path.split('/').pop()); Object.assign(policy, body, { version: policy.version + 1 }); return route.fulfill({ json: policy }); }
+    if (path.endsWith('/audit')) return route.fulfill({ json: { records: audit, next_before: null } });
+    return route.fulfill({ status: 404, json: {} });
+  });
+  await page.goto('/admin');
+  await expect(page.getByRole('heading', { name: 'Access restricted' })).toBeVisible();
+  state.profile.role = 'admin';
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Administration', exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('admin-destinations.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Edit Tassa', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Description (French)', exact: true }).fill('Description mise a jour.');
+  await page.getByRole('checkbox', { name: 'Published', exact: true }).uncheck();
+  await page.screenshot({ path: testInfo.outputPath('admin-editor.png'), fullPage: true });
+  conflict = true;
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('This record changed.');
+  await page.getByRole('button', { name: 'Discard draft and reload' }).click();
+  await page.getByRole('checkbox', { name: 'Published', exact: true }).uncheck();
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await expect(page.getByRole('row').filter({ hasText: 'Tassa' })).toContainText('Archived');
+  await page.getByRole('button', { name: 'Edit Tassa', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Published', exact: true }).check();
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await page.getByRole('button', { name: 'Add destination', exact: true }).click();
+  await expect(page.getByRole('checkbox', { name: 'Published', exact: true })).not.toBeChecked();
+  await page.getByRole('textbox', { name: 'Place name', exact: true }).fill('New garden');
+  await page.getByRole('textbox', { name: 'Neighborhood', exact: true }).fill('Bastos');
+  await page.getByRole('textbox', { name: 'Address', exact: true }).fill('Bastos, Yaounde');
+  await page.getByRole('spinbutton', { name: 'Latitude', exact: true }).fill('3.88');
+  await page.getByRole('spinbutton', { name: 'Longitude', exact: true }).fill('11.51');
+  await page.getByRole('textbox', { name: 'Description (English)', exact: true }).fill('A quiet garden.');
+  await page.getByRole('textbox', { name: 'Description (French)', exact: true }).fill('Un jardin calme.');
+  await page.getByRole('textbox', { name: 'Photo URL', exact: true }).fill('/images/places/1.jpg');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await expect(page.getByRole('row').filter({ hasText: 'New garden' })).toContainText('Archived');
+  expect(records.at(-1)).toMatchObject({ description_fr: 'Un jardin calme.', active: false });
+  await page.getByRole('tab', { name: 'Fare policies', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit Private car', exact: true }).click();
+  await page.getByRole('spinbutton', { name: 'Lower rate per km (FCFA)', exact: true }).fill('200');
+  await page.screenshot({ path: testInfo.outputPath('admin-fare-editor.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  expect(policies[1].per_km_min).toBe(200);
+  await page.getByRole('tab', { name: 'Audit log', exact: true }).click();
+  await expect(page.getByRole('cell', { name: /Destination updated/ })).toHaveCount(2);
+  await page.screenshot({ path: testInfo.outputPath('administration.png'), fullPage: true });
+  await page.setViewportSize({ width: 320, height: 780 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await selectLanguage(page, 'fr');
+  expect(await page.locator('.admin-stats dt').evaluateAll(labels => labels.every(label => label.scrollWidth <= label.clientWidth))).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('administration-fr-320.png'), fullPage: true });
+});
+
+test('account recovery supports email and phone and clears reset tokens from the URL', async ({ page }) => {
+  await mockApi(page, false);
+  const requests = [];
+  await page.route('**/api/auth/recovery**', route => {
+    const body = route.request().postDataJSON();
+    if (body) requests.push(body);
+    return route.fulfill({ json: route.request().url().endsWith('/config') ? { email: true, phone: true } : { message: 'ok' } });
+  });
+  await page.goto('/login');
+  await page.getByRole('link', { name: 'Forgot password?' }).click();
+  await page.getByRole('button', { name: 'Phone number', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Phone number', exact: true }).fill('+237699112233');
+  await page.getByRole('button', { name: 'Send reset link' }).click();
+  await expect(page.getByRole('heading', { name: 'Check your messages' })).toBeVisible();
+  expect(requests[0]).toEqual({ channel: 'phone', identifier: '+237699112233' });
+  const resetToken = 'a'.repeat(43);
+  await page.goto(`/reset-password#token=${resetToken}`);
+  await expect(page).toHaveURL(/\/reset-password$/);
+  await page.getByLabel('New password', { exact: true }).fill('a-new-long-password');
+  await page.getByLabel('Confirm password', { exact: true }).fill('different-password');
+  await page.getByRole('button', { name: 'Reset password', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('The passwords do not match.');
+  await page.getByLabel('Confirm password', { exact: true }).fill('a-new-long-password');
+  await page.getByRole('button', { name: 'Reset password', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Password changed', exact: true })).toBeVisible();
+  expect(requests[1]).toEqual({ token: resetToken, password: 'a-new-long-password' });
+  await page.getByRole('link', { name: 'Back to sign in' }).click();
+  await expect(page).toHaveURL(/\/login$/);
 });
 
 test('registration and login support phone identity and error recovery', async ({ page }) => {
@@ -186,20 +381,64 @@ test('recommended order is preserved until the user changes sorting', async ({ p
   await expect(page.locator('.place-title-row h2').first()).toHaveText('Mont Febe');
 });
 
-test('map markers, live location, directions, and booking work together', async ({ page, context }) => {
+test('map markers, live location, directions, and booking work together', async ({ page, context }, testInfo) => {
   await mockApi(page);
   await context.grantPermissions(['geolocation']);
-  await context.setGeolocation({ latitude: 3.88, longitude: 11.51 });
+  await context.setGeolocation({ latitude: 3.88, longitude: 11.51, accuracy: 12 });
   await page.route('https://basemaps.cartocdn.com/gl/**/style.json', route => route.fulfill({ json: { version: 8, sources: {}, layers: [{ id: 'test-background', type: 'background', paint: { 'background-color': route.request().url().includes('dark-matter') ? '#202625' : '#dfece5' } }] } }));
   await page.route('https://router.project-osrm.org/**', route => route.fulfill({ json: { routes: [{ distance: 1200, duration: 300, geometry: { coordinates: [[11.51, 3.88], [11.512, 3.885]] } }] } }));
   await page.goto('/map');
   await expect(page.locator('.map-section')).toHaveAttribute('data-map-ready', 'true', { timeout: 15000 });
   await expect(page.locator('.place-marker')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Locate me', exact: true }).click();
+  await expect(page.locator('.location-summary')).toContainText('Latitude 3.88000, longitude 11.51000');
+  await expect(page.locator('.location-summary')).toContainText('Accuracy: about 12 m');
+  await expect(page.getByRole('img', { name: 'Your location', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Fit all places', exact: true }).click();
+  await page.getByRole('button', { name: 'Locate me', exact: true }).click();
+  await expect(page.getByRole('img', { name: 'Your location', exact: true })).toBeVisible();
+  await expect.poll(() => page.locator('.user-location-marker').evaluate(marker => {
+    const position = marker.getBoundingClientRect();
+    const canvas = marker.closest('.map-canvas').getBoundingClientRect();
+    return Math.abs(position.left + position.width / 2 - canvas.left - canvas.width / 2) < 3 && Math.abs(position.top + position.height / 2 - canvas.top - canvas.height / 2) < 3;
+  })).toBe(true);
   await page.getByRole('button', { name: 'Show Tassa on map', exact: true }).click();
   await expect(page.locator('.map-popup')).toContainText('Tassa');
   await page.getByRole('button', { name: 'Directions', exact: true }).click();
   await expect(page.locator('.route-summary')).toContainText('1.2 km / about 5 min driving');
-  await expect(page.getByRole('button', { name: 'Stop live location' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('status', { name: 'Estimated fare range', exact: true })).toHaveText('350 - 400 FCFA');
+  await expect(page.locator('.route-summary')).toContainText('Per passenger');
+  await page.getByText('Custom kilometer calculation', { exact: true }).click();
+  await page.getByRole('spinbutton', { name: 'Rate per km (FCFA)', exact: true }).fill('250');
+  await page.getByRole('spinbutton', { name: 'Base fare (FCFA)', exact: true }).fill('300');
+  await expect(page.getByRole('status', { name: 'Custom estimate', exact: true })).toHaveText('600 FCFA');
+  await page.locator('.route-summary').getByRole('combobox', { name: 'Transport', exact: true }).selectOption('moto');
+  await expect(page.getByRole('status', { name: 'Estimated fare range', exact: true })).toHaveText('Quote required');
+  await page.locator('.route-summary').getByRole('combobox', { name: 'Transport', exact: true }).selectOption('private');
+  await expect(page.getByRole('status', { name: 'Estimated fare range', exact: true })).toHaveText('530 - 860 FCFA');
+  await expect(page.locator('.route-summary')).toContainText('Per vehicle');
+  await page.getByRole('spinbutton', { name: 'Rate per km (FCFA)', exact: true }).fill('');
+  await expect(page.getByRole('status', { name: 'Custom estimate', exact: true })).toHaveText('Unavailable');
+  await page.getByRole('spinbutton', { name: 'Rate per km (FCFA)', exact: true }).fill('220');
+  await expect(page.locator('.route-summary').getByRole('link', { name: 'Numbeo (crowdsourced)' })).toHaveAttribute('href', /numbeo/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('map-estimate.png'), fullPage: true });
+  await selectLanguage(page, 'fr');
+  await expect(page.getByRole('button', { name: 'Me localiser', exact: true })).toBeVisible();
+  await expect(page.getByRole('status', { name: 'Fourchette estim\u00e9e', exact: true })).toHaveText('530 - 860 FCFA');
+  const originalViewport = page.viewportSize();
+  await page.setViewportSize({ width: 320, height: 780 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await expect(page.locator('.map-section')).toHaveAttribute('data-map-ready', 'true');
+  await expect.poll(() => page.locator('.place-map-popup').evaluate(popup => {
+    const bounds = popup.getBoundingClientRect();
+    const canvas = popup.closest('.map-canvas').getBoundingClientRect();
+    return bounds.left >= canvas.left && bounds.right <= canvas.right && bounds.top >= canvas.top && bounds.bottom <= canvas.bottom;
+  })).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('map-estimate-fr-320.png'), fullPage: true });
+  await page.setViewportSize(originalViewport);
+  await selectLanguage(page, 'en');
+  await expect(page.getByRole('button', { name: 'Stop live location' })).toBeEnabled();
   await expect(page.getByRole('img', { name: 'Your location', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Switch to dark mode' }).click();
   await expect(page.locator('.map-section')).toHaveAttribute('data-map-theme', 'dark');
@@ -209,9 +448,64 @@ test('map markers, live location, directions, and booking work together', async 
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Stop live location' }).click();
-  await expect(page.getByRole('button', { name: 'My location', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('button', { name: 'Stop live location' })).toBeDisabled();
+  await expect(page.locator('.location-summary')).toContainText('Last known location');
   await page.getByRole('button', { name: 'Clear route' }).click();
   await expect(page.locator('.route-summary')).toHaveCount(0);
+});
+
+test('manual origins route from landmarks and coordinates without asking for GPS', async ({ page }) => {
+  await mockApi(page);
+  await page.addInitScript(() => { window.locationRequests = 0; Object.defineProperty(navigator, 'geolocation', { value: { watchPosition: () => { window.locationRequests += 1; return 1; }, clearWatch: () => {} } }); });
+  await page.route('https://basemaps.cartocdn.com/gl/**/style.json', route => route.fulfill({ json: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#dfece5' } }] } }));
+  const routes = [];
+  await page.route('https://router.project-osrm.org/**', route => { routes.push(route.request().url()); return route.fulfill({ json: { routes: [{ distance: 1200, duration: 300, geometry: { coordinates: [[11.49, 3.91], [11.512, 3.885]] } }] } }); });
+  await page.goto('/map?place=1');
+  await expect(page.locator('.map-section')).toHaveAttribute('data-map-ready', 'true', { timeout: 15000 });
+  await page.getByRole('button', { name: 'Manual origin', exact: true }).click();
+  await page.getByRole('button', { name: 'Estimate trip', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Choose a manual starting point first.');
+  expect(routes).toHaveLength(0);
+  await page.getByRole('combobox', { name: 'Starting landmark', exact: true }).selectOption('44');
+  await page.getByRole('button', { name: 'Estimate trip', exact: true }).click();
+  await expect(page.locator('.route-summary')).toBeVisible();
+  expect(routes[0]).toContain('/11.49,3.91;11.512,3.885?');
+  await expect(page.locator('.location-summary')).toContainText('Manual starting point');
+  await expect(page.locator('.location-summary')).not.toContainText('Accuracy');
+  await page.getByRole('spinbutton', { name: 'Latitude', exact: true }).fill('3.88');
+  await page.getByRole('spinbutton', { name: 'Longitude', exact: true }).fill('11.51');
+  await page.getByRole('button', { name: 'Set origin', exact: true }).click();
+  await expect.poll(() => routes.at(-1)).toContain('/11.51,3.88;11.512,3.885?');
+  expect(await page.evaluate(() => window.locationRequests)).toBe(0);
+  await page.getByRole('button', { name: 'Choose on map', exact: true }).click();
+  await page.locator('.maplibregl-canvas').click({ position: { x: 75, y: 95 } });
+  await expect(page.getByRole('button', { name: 'Choose on map', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  expect(await page.evaluate(() => window.locationRequests)).toBe(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
+test('trip estimates retry failed routes and never quote invalid route data', async ({ page, context }) => {
+  await mockApi(page);
+  await context.grantPermissions(['geolocation']);
+  await context.setGeolocation({ latitude: 3.88, longitude: 11.51 });
+  await page.route('https://basemaps.cartocdn.com/gl/**/style.json', route => route.fulfill({ json: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#dfece5' } }] } }));
+  let routeState = 'unavailable';
+  await page.route('https://router.project-osrm.org/**', route => {
+    expect(route.request().url()).toContain('/11.51,3.88;11.512,3.885?');
+    return routeState === 'unavailable' ? route.fulfill({ status: 503, json: {} }) : route.fulfill({ json: { routes: [{ distance: routeState === 'invalid' ? -100 : 1200, duration: 300, geometry: { coordinates: [[11.51, 3.88], [11.512, 3.885]] } }] } });
+  });
+  await page.goto('/map?place=1');
+  await expect(page.locator('.map-section')).toHaveAttribute('data-map-ready', 'true', { timeout: 15000 });
+  await page.getByRole('button', { name: 'Estimate trip', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Directions are unavailable right now.');
+  await expect(page.locator('.route-summary')).toHaveCount(0);
+  routeState = 'invalid';
+  await page.getByRole('button', { name: 'Retry directions', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('No driving route found');
+  await expect(page.locator('.route-summary')).toHaveCount(0);
+  routeState = 'valid';
+  await page.getByRole('button', { name: 'Retry directions', exact: true }).click();
+  await expect(page.getByRole('status', { name: 'Estimated fare range', exact: true })).toHaveText('350 - 400 FCFA');
 });
 
 test('layout, dialogs, preferences, and old links work on both device sizes', async ({ page }, testInfo) => {
@@ -254,7 +548,7 @@ test('layout, dialogs, preferences, and old links work on both device sizes', as
 });
 
 test('theme persists and system mode follows device changes', async ({ page }) => {
-  await mockApi(page, false);
+  await mockApi(page);
   await page.emulateMedia({ colorScheme: 'light' });
   await page.goto('/');
   await page.getByRole('button', { name: 'Switch to dark mode' }).click();
@@ -278,18 +572,33 @@ test('map location denial is recoverable without losing place access', async ({ 
   await mockApi(page);
   await page.route('https://basemaps.cartocdn.com/gl/**/style.json', route => route.fulfill({ json: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#dfece5' } }] } }));
   await page.addInitScript(() => {
-    Object.defineProperty(navigator, 'geolocation', { value: { watchPosition: (success, failure) => { failure({ code: 1 }); return 1; }, clearWatch: () => {} } });
+    let attempts = 0;
+    window.clearedLocationWatches = [];
+    Object.defineProperty(navigator, 'geolocation', { value: { watchPosition: (success, failure) => {
+      attempts += 1;
+      if (attempts === 1) failure({ code: 1 });
+      else success({ coords: { longitude: 11.51, latitude: 3.88, accuracy: 25 } });
+      return attempts;
+    }, clearWatch: watch => window.clearedLocationWatches.push(watch) } });
   });
   await page.goto('/map');
   await expect(page.locator('.map-section')).toHaveAttribute('data-map-ready', 'true', { timeout: 15000 });
-  await page.getByRole('button', { name: 'My location', exact: true }).click();
+  await page.getByRole('button', { name: 'Locate me', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Location access was denied');
-  await expect(page.getByRole('button', { name: 'My location', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('img', { name: 'Your location', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Stop live location' })).toBeDisabled();
   await page.getByRole('combobox', { name: 'Find a place on the map' }).selectOption('1');
   await expect(page.locator('.map-popup')).toContainText('Tassa');
+  await page.getByRole('button', { name: 'Locate me', exact: true }).click();
+  await expect(page.locator('.location-summary')).toContainText('Accuracy: about 25 m');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Stop live location' }).click();
+  await expect(page.locator('.location-summary')).toContainText('Last known location');
+  expect(await page.evaluate(() => window.clearedLocationWatches)).toEqual([1, 2]);
 });
 
 async function selectLanguage(page, value) {
+  await expect(page.locator('.topbar')).toBeVisible();
   const menu = page.getByRole('button', { name: /^(Open navigation|Ouvrir le menu)$/ });
   if (await menu.isVisible()) await menu.click();
   await page.locator('.language-control select').selectOption(value);

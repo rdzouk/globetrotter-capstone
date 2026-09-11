@@ -8,12 +8,15 @@ import {
   Clock3,
   Compass,
   MapPin,
+  Pencil,
   Plus,
   Star,
+  Trash2,
 } from "lucide-react";
 import { api } from "./api";
 import { useApp, useResource } from "./state";
 import {
+  BookingModal,
   Empty,
   ErrorMessage,
   Label,
@@ -32,6 +35,8 @@ export default function Trips({ planner = false, onPlan }) {
   const [filter, setFilter] = useState("upcoming");
   const [week, setWeek] = useState(localDate());
   const [review, setReview] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [cancelling, setCancelling] = useState(null);
   const today = localDate();
   const days = weekDays(week);
   const byId = new Map((places.data || []).map((place) => [place.id, place]));
@@ -57,7 +62,7 @@ export default function Trips({ planner = false, onPlan }) {
     setWeek(localDate(date));
   }
   function renderTrip(trip, small = false) {
-    const place = byId.get(trip.destination_id);
+    const place = byId.get(trip.destination_id) || trip.destination;
     return (
       <article
         key={trip.id}
@@ -114,6 +119,7 @@ export default function Trips({ planner = false, onPlan }) {
             </p>
           )}
           {trip.notes && <p className="trip-notes">{trip.notes}</p>}
+          {!trip.visited && <div className="plan-actions"><button className="icon-button" disabled={!place} title={translate('Edit plan')} aria-label={translate('Edit plan')} onClick={() => setEditing(trip)}><Pencil size={17} /></button><button className="icon-button" title={translate('Cancel plan')} aria-label={translate('Cancel plan')} onClick={() => setCancelling(trip)}><Trash2 size={17} /></button></div>}
           {trip.review ? (
             <div className="trip-review">
               <span className="rating">
@@ -279,8 +285,28 @@ export default function Trips({ planner = false, onPlan }) {
           onSaved={trips.reload}
         />
       )}
+      {editing && <BookingModal trip={editing} place={byId.get(editing.destination_id) || editing.destination} onClose={() => setEditing(null)} />}
+      {cancelling && <CancelPlanModal trip={cancelling} name={byId.get(cancelling.destination_id)?.name || translate('Place #{id}', { id: cancelling.destination_id })} onClose={() => setCancelling(null)} />}
     </>
   );
+}
+
+function CancelPlanModal({ trip, name, onClose }) {
+  const { translate, updateTrips, setToast } = useApp();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function cancel() {
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/itineraries/${trip.id}`, { method: 'DELETE' });
+      updateTrips();
+      setToast({ message: 'Plan cancelled.' });
+      onClose();
+    } catch (failure) { setError(failure.message); }
+    finally { setBusy(false); }
+  }
+  return <Modal title="Cancel this plan?" onClose={() => { if (!busy) onClose(); }}><p>{translate('Remove your planned visit to {name}? This does not cancel a reservation with the venue.', { name })}</p><ErrorMessage>{error}</ErrorMessage><div className="plan-actions"><button className="button secondary" disabled={busy} onClick={onClose}>{translate('Keep plan')}</button><button className="button" disabled={busy} onClick={cancel}><Trash2 size={17} />{translate(busy ? 'Saving...' : 'Cancel plan')}</button></div></Modal>;
 }
 
 function ReviewModal({ trip, onClose, onSaved }) {

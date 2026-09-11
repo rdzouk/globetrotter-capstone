@@ -24,10 +24,11 @@ def verify_password(plain_password, hashed):
     return check_password_hash(hashed, plain_password)
 
 
-def issue_token(user_id, name):
+def issue_token(user_id, name, session_version=0):
     payload = {
         "sub": user_id,
         "name": name,
+        "ver": session_version,
         "iat": datetime.datetime.now(datetime.timezone.utc),
         "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=TOKEN_TTL_HOURS),
     }

@@ -38,7 +38,7 @@ export function AuthPage({ register = false }) {
     typeof from === "string" &&
     from.startsWith("/") &&
     !from.startsWith("//") &&
-    !/^\/(login|register)/.test(from)
+    !/^\/(login|register|forgot-password|reset-password)/.test(from)
       ? from
       : "/";
   if (session.token) return <Navigate to={returnTo} replace />;
@@ -140,6 +140,7 @@ export function AuthPage({ register = false }) {
           {register && (
             <InterestPicker value={preferences} onChange={setPreferences} />
           )}
+          {!register && <Link className="text-button" to="/forgot-password">{translate('Forgot password?')}</Link>}
           <ErrorMessage>{error}</ErrorMessage>
           <button className="button" disabled={busy}>
             {translate(busy ? "Please wait..." : register ? "Create account" : "Sign in")}
@@ -165,10 +166,6 @@ export function AuthPage({ register = false }) {
             <br />
             {translate("Go somewhere new.")}
           </h2>
-          <Link to="/">
-            {translate("Explore the city")}
-            <ArrowRight size={18} />
-          </Link>
         </div>
       </aside>
     </div>
@@ -223,7 +220,7 @@ function ProfileForm({ profile }) {
             className="button secondary"
             onClick={() => {
               signOut();
-              navigate("/");
+              navigate("/login", { replace: true });
             }}
           >
             <LogOut size={17} />

@@ -47,6 +47,31 @@ class User(Base):
     )
 
 
+class AccountSecurity(Base):
+    __tablename__ = "account_security"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    session_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
+
+
+class PasswordReset(Base):
+    __tablename__ = "password_resets"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    password_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class FarePolicy(Base):
+    __tablename__ = "fare_policies"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    data: Mapped[dict] = mapped_column(JSON, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+
 class Destination(Base):
     __tablename__ = "destinations"
 
@@ -64,6 +89,7 @@ class Destination(Base):
     tags: Mapped[list] = mapped_column(JSON, default=list)
     description: Mapped[str] = mapped_column(Text, default="")
     image_url: Mapped[str] = mapped_column(String(500), default="")
+    publication: Mapped["DestinationPublication | None"] = relationship(back_populates="destination", uselist=False, lazy="joined", cascade="all, delete-orphan")
 
     itineraries: Mapped[list["Itinerary"]] = relationship(back_populates="destination")
     favorites: Mapped[list["Favorite"]] = relationship(back_populates="destination")
@@ -73,6 +99,17 @@ class Destination(Base):
         Index("ix_destinations_category", "category"),
         Index("ix_destinations_neighborhood", "neighborhood"),
     )
+
+
+class DestinationPublication(Base):
+    __tablename__ = "destination_publications"
+
+    destination_id: Mapped[int] = mapped_column(ForeignKey("destinations.id", ondelete="CASCADE"), primary_key=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    description_fr: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    destination: Mapped["Destination"] = relationship(back_populates="publication")
 
 
 class Comment(Base):

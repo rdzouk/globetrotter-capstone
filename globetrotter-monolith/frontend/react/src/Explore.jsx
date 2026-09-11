@@ -37,7 +37,7 @@ const quickCategories = [
 ];
 
 export default function Explore({ mode = "explore", onPlan }) {
-  const { places, favorites, translate, number } = useApp();
+  const { places, favorites, translate, number, language } = useApp();
   const recommendations = useResource(
     mode === "recommendations" ? "/recommendations?limit=60" : null,
   );
@@ -59,7 +59,7 @@ export default function Explore({ mode = "explore", onPlan }) {
     params.get("sort") ||
     (mode === "recommendations" ? "recommended" : "rating");
   const mapMode = mode === "map" || params.get("view") === "map";
-  const data = (resource.data || []).map(place => ({ ...place, searchText: [translate(place.description), translate(categories[place.category]), ...(place.tags || []).map(tag => translate(tag.replaceAll('-', ' ')))].join(' ') }));
+  const data = (resource.data || []).map(place => ({ ...place, searchText: [language === 'fr' && place.description_fr ? place.description_fr : translate(place.description), translate(categories[place.category]), ...(place.tags || []).map(tag => translate(tag.replaceAll('-', ' ')))].join(' ') }));
   const filtered = filterPlaces(data, {
     query: deferredQuery,
     category,

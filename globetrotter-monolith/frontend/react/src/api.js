@@ -16,7 +16,7 @@ export async function api(path, options = {}) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 429) throw new Error('Too many requests. Please wait a moment and try again.');
-    if (response.status === 401 && path !== '/login') {
+    if (response.status === 401 && path !== '/login' && token && localStorage.getItem('gt_token') === token) {
       localStorage.removeItem('gt_token');
       localStorage.removeItem('gt_name');
       window.dispatchEvent(new Event('gt:session-expired'));

@@ -94,6 +94,30 @@ def auth_header(client, **kwargs):
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture
+def authenticated_headers(client):
+    register(client)
+    return auth_header(client)
+
+
+@pytest.mark.parametrize("path", [
+    "/destinations", "/destinations/1/reviews", "/destinations/1/comments",
+    "/destinations/1/nearby", "/neighborhoods/Bastos", "/feedback",
+])
+@pytest.mark.parametrize("authorization", [None, "Basic invalid", "Bearer invalid-token"])
+def test_catalogue_and_community_require_auth(client, path, authorization):
+    headers = {"Authorization": authorization} if authorization else {}
+    response = client.get(path, headers=headers)
+    assert response.status_code == 401
+    assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_health_and_preflight_remain_public(client):
+    assert client.get("/health").status_code == 200
+    assert client.get("/ready").status_code == 200
+    assert client.options("/destinations").status_code == 200
+
+
 # ---- Registration ----
 
 def test_register_success(client):
@@ -157,15 +181,15 @@ def test_login_bad_password(client):
 
 # ---- Destinations ----
 
-def test_get_destinations(client):
-    resp = client.get("/destinations")
+def test_get_destinations(client, authenticated_headers):
+    resp = client.get("/destinations", headers=authenticated_headers)
     assert resp.status_code == 200
     names = [d["name"] for d in resp.get_json()]
     assert "Tassa" in names and "Shu Anta Nlongkak" in names
 
 
-def test_get_destinations_filter_by_category(client):
-    resp = client.get("/destinations?category=spa")
+def test_get_destinations_filter_by_category(client, authenticated_headers):
+    resp = client.get("/destinations?category=spa", headers=authenticated_headers)
     data = resp.get_json()
     assert len(data) == 1
     assert data[0]["name"] == "Shu Anta Nlongkak"
@@ -205,7 +229,7 @@ def test_destination_comments_allow_nested_replies(client):
     assert parent["message"] == "Nice place"
     assert reply["parent_comment_id"] == parent["id"]
 
-    resp = client.get("/destinations/1/comments")
+    resp = client.get("/destinations/1/comments", headers=headers)
     assert resp.status_code == 200
     comments = resp.get_json()
     assert any(c["message"] == "Nice place" for c in comments)
@@ -252,6 +276,32 @@ def test_list_itineraries_scoped_to_user(client):
 
 # ---- Mark visited + reviews ----
 
+def test_edit_and_cancel_owned_plan(client, authenticated_headers):
+    created = client.post("/itineraries", headers=authenticated_headers, json={"destination_id": 1, "start_date": "2026-09-20", "end_date": "2026-09-20"}).get_json()
+    path = f'/itineraries/{created["id"]}'
+    assert client.patch(path, json={"notes": "Changed"}).status_code == 401
+    for payload in ({"user_id": 999}, {"visited": True}, {"start_date": "2026-02-30"}, {"time_slot": "12:00-10:00"}, {"notes": []}, {"end_date": "2026-01-01"}):
+        assert client.patch(path, headers=authenticated_headers, json=payload).status_code == 400
+    updated = client.patch(path, headers=authenticated_headers, json={"time_slot": "10:00-12:00", "notes": "Bring water", "transport_mode": "moto"})
+    assert updated.status_code == 200
+    assert updated.get_json()["notes"] == "Bring water"
+    register(client, name="Bob", email="bob@example.com")
+    other = auth_header(client, email="bob@example.com")
+    assert client.patch(path, headers=other, json={"notes": "No"}).status_code == 404
+    assert client.delete(path, headers=other).status_code == 404
+    assert client.delete(path, headers=authenticated_headers).status_code == 200
+    assert client.get("/itineraries", headers=authenticated_headers).get_json() == []
+
+
+def test_completed_plans_preserve_visit_history(client, authenticated_headers):
+    created = client.post("/itineraries", headers=authenticated_headers, json={"destination_id": 1, "start_date": "2026-09-01", "end_date": "2026-09-01"}).get_json()
+    path = f'/itineraries/{created["id"]}'
+    client.patch(path + "/visit", headers=authenticated_headers, json={"rating": 5, "visited_date": "2026-09-01"})
+    assert client.patch(path, headers=authenticated_headers, json={"notes": "No"}).status_code == 409
+    assert client.delete(path, headers=authenticated_headers).status_code == 409
+    assert client.get("/destinations/1/reviews", headers=authenticated_headers).get_json()[0]["rating"] == 5
+
+
 def test_mark_itinerary_visited_with_review(client):
     register(client)
     headers = auth_header(client)
@@ -296,7 +346,7 @@ def test_mark_visited_wrong_owner_rejected(client):
     assert resp.status_code == 404
 
 
-def test_destination_reviews_public(client):
+def test_destination_reviews_authenticated(client):
     register(client)
     headers = auth_header(client)
     created = client.post("/itineraries", headers=headers, json={
@@ -306,7 +356,7 @@ def test_destination_reviews_public(client):
         "rating": 4, "comment": "Great atmosphere.", "visited_date": "2026-08-05",
     })
 
-    resp = client.get("/destinations/1/reviews")
+    resp = client.get("/destinations/1/reviews", headers=headers)
     assert resp.status_code == 200
     reviews = resp.get_json()
     assert len(reviews) == 1
@@ -329,7 +379,7 @@ def test_submit_and_list_feedback(client):
     })
     assert resp.status_code == 201
 
-    resp = client.get("/feedback")
+    resp = client.get("/feedback", headers=headers)
     assert resp.status_code == 200
     items = resp.get_json()
     assert len(items) == 1
@@ -345,9 +395,9 @@ def test_submit_feedback_empty_message_rejected(client):
 
 # ---- Nearby places + neighborhood info ----
 
-def test_nearby_destinations(client):
+def test_nearby_destinations(client, authenticated_headers):
     # Tassa (id 1) and Shu Anta Nlongkak (id 2) are ~1km apart in the baseline data.
-    resp = client.get("/destinations/1/nearby?max_km=5")
+    resp = client.get("/destinations/1/nearby?max_km=5", headers=authenticated_headers)
     assert resp.status_code == 200
     nearby = resp.get_json()
     assert len(nearby) == 1
@@ -355,13 +405,13 @@ def test_nearby_destinations(client):
     assert "distance_km" in nearby[0]
 
 
-def test_nearby_destinations_unknown_id(client):
-    resp = client.get("/destinations/999/nearby")
+def test_nearby_destinations_unknown_id(client, authenticated_headers):
+    resp = client.get("/destinations/999/nearby", headers=authenticated_headers)
     assert resp.status_code == 404
 
 
-def test_neighborhood_info(client):
-    resp = client.get("/neighborhoods/Bastos")
+def test_neighborhood_info(client, authenticated_headers):
+    resp = client.get("/neighborhoods/Bastos", headers=authenticated_headers)
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["neighborhood"] == "Bastos"
@@ -369,8 +419,8 @@ def test_neighborhood_info(client):
     assert body["place_count"] == 1  # Tassa, in the baseline data
 
 
-def test_neighborhood_info_unknown(client):
-    resp = client.get("/neighborhoods/Nowhereville")
+def test_neighborhood_info_unknown(client, authenticated_headers):
+    resp = client.get("/neighborhoods/Nowhereville", headers=authenticated_headers)
     assert resp.status_code == 404
 
 
@@ -480,6 +530,165 @@ def test_unknown_route_returns_404_not_500(client):
 def test_wrong_method_returns_405_not_500(client):
     resp = client.delete("/destinations")  # DELETE isn't defined on this route
     assert resp.status_code == 405
+
+
+def test_recovery_single_use_neutral_response_and_session_revocation(client, monkeypatch):
+    from urllib.parse import urlsplit, parse_qs
+    from models import PasswordReset
+    delivered = []
+    monkeypatch.setattr(flask_app_module.config, "SMTP_HOST", "localhost")
+    monkeypatch.setattr(flask_app_module.config, "SMTP_FROM", "noreply@example.test")
+    monkeypatch.setattr(flask_app_module.config, "APP_PUBLIC_URL", "https://example.test")
+    monkeypatch.setattr(flask_app_module.recovery, "deliver_reset", lambda identity, channel, link: delivered.append((identity, link)))
+    register(client)
+    old_session = auth_header(client)
+    payload = {"channel": "email", "identifier": "alice@example.com"}
+    known = client.post("/auth/recovery", json=payload)
+    unknown = client.post("/auth/recovery", json={**payload, "identifier": "absent@example.test"})
+    assert known.status_code == unknown.status_code == 202
+    assert known.get_json() == unknown.get_json()
+    assert len(delivered) == 1
+    assert delivered[0][1].startswith("https://example.test/reset-password#token=")
+    token = parse_qs(urlsplit(delivered[0][1]).fragment)["token"][0]
+    with database.get_session() as session:
+        assert token not in session.query(PasswordReset).first().token_hash
+    assert client.post("/auth/recovery/reset", json={"token": token, "password": "short"}).status_code == 400
+    assert client.post("/auth/recovery/reset", json={"token": token, "password": "a-new-long-password"}).status_code == 200
+    assert client.post("/auth/recovery/reset", json={"token": token, "password": "another-new-password"}).status_code == 400
+    assert client.get("/profile", headers=old_session).status_code == 401
+    assert login(client).status_code == 401
+    assert login(client, password="a-new-long-password").status_code == 200
+    assert client.get("/profile", headers=auth_header(client, password="a-new-long-password")).status_code == 200
+
+
+def test_recovery_expired_links_and_phone_delivery(client, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from urllib.parse import urlsplit, parse_qs
+    from models import PasswordReset
+    delivered = []
+    monkeypatch.setattr(flask_app_module.recovery, "delivery_channels", lambda: {"email": True, "phone": True})
+    monkeypatch.setattr(flask_app_module.recovery, "deliver_reset", lambda identity, channel, link: delivered.append((identity, link)))
+    register(client, email=None, phone="+237 699112233")
+    assert client.post("/auth/recovery", json={"channel": "phone", "identifier": "699112233"}).status_code == 202
+    assert delivered[0][0] == "+237699112233"
+    token = parse_qs(urlsplit(delivered[0][1]).fragment)["token"][0]
+    with database.get_session() as session:
+        session.query(PasswordReset).update({"expires_at": datetime.now(timezone.utc) - timedelta(minutes=1)})
+    assert client.post("/auth/recovery/reset", json={"token": token, "password": "a-new-long-password"}).status_code == 400
+    assert login(client, email=None, phone="+237 699112233").status_code == 200
+    assert client.post("/auth/recovery", json={"channel": "email", "identifier": "%@example.com"}).status_code == 400
+
+
+def test_recovery_ambiguous_phone_and_delivery_failure_do_not_leak_accounts(client, monkeypatch):
+    from models import PasswordReset
+    delivered = []
+    monkeypatch.setattr(flask_app_module.recovery, "delivery_channels", lambda: {"email": True, "phone": True})
+    monkeypatch.setattr(flask_app_module.recovery, "deliver_reset", lambda *values: delivered.append(values))
+    register(client, email=None, phone="+237 699112233")
+    register(client, name="Bob", email=None, phone="+237699112233")
+    response = client.post("/auth/recovery", json={"channel": "phone", "identifier": "699112233"})
+    assert response.status_code == 202
+    assert delivered == []
+    register(client, name="Carol", email="carol@example.test")
+    def delivery_failure(*args):
+        raise RuntimeError("test delivery failure")
+    monkeypatch.setattr(flask_app_module.recovery, "deliver_reset", delivery_failure)
+    failure = client.post("/auth/recovery", json={"channel": "email", "identifier": "carol@example.test"})
+    unknown = client.post("/auth/recovery", json={"channel": "email", "identifier": "absent@example.test"})
+    assert failure.status_code == unknown.status_code == 202
+    assert failure.get_json() == unknown.get_json()
+    with database.get_session() as session:
+        assert session.query(PasswordReset).count() == 0
+
+
+def test_recovery_delivery_uses_tls_and_expected_sms_payload(monkeypatch):
+    from unittest.mock import MagicMock
+    from urllib.parse import parse_qs
+    service = flask_app_module.recovery
+    mail_connection = MagicMock()
+    mail_connection.__enter__.return_value = mail_connection
+    mail_factory = MagicMock(return_value=mail_connection)
+    monkeypatch.setattr(service.smtplib, "SMTP", mail_factory)
+    monkeypatch.setattr(service.config, "SMTP_HOST", "smtp.example.test")
+    monkeypatch.setattr(service.config, "SMTP_PORT", 587)
+    monkeypatch.setattr(service.config, "SMTP_SECURITY", "starttls")
+    monkeypatch.setattr(service.config, "SMTP_FROM", "noreply@example.test")
+    monkeypatch.setattr(service.config, "SMTP_USERNAME", "")
+    link = "https://example.test/reset-password#token=test-only"
+    service.deliver_reset("alice@example.test", "email", link)
+    mail_factory.assert_called_once_with("smtp.example.test", 587, timeout=10)
+    mail_connection.starttls.assert_called_once()
+    email = mail_connection.send_message.call_args.args[0]
+    assert email["To"] == "alice@example.test"
+    assert link in email.get_content()
+    response = MagicMock()
+    response.__enter__.return_value.status = 201
+    send_sms = MagicMock(return_value=response)
+    monkeypatch.setattr(service, "urlopen", send_sms)
+    monkeypatch.setattr(service.config, "TWILIO_ACCOUNT_SID", "AC" + "0" * 32)
+    monkeypatch.setattr(service.config, "TWILIO_AUTH_TOKEN", "test-only")
+    monkeypatch.setattr(service.config, "TWILIO_FROM", "+15005550006")
+    service.deliver_reset("+237699112233", "phone", link)
+    request = send_sms.call_args.args[0]
+    assert request.full_url.startswith("https://api.twilio.com/2010-04-01/Accounts/AC")
+    payload = parse_qs(request.data.decode())
+    assert payload["To"] == ["+237699112233"]
+    assert payload["From"] == ["+15005550006"]
+    assert link in payload["Body"][0]
+
+
+def test_admin_roles_catalogue_archiving_and_conflicts(client, authenticated_headers):
+    from models import AccountSecurity
+    paths = ["/admin/overview", "/admin/destinations", "/admin/fares", "/admin/audit"]
+    for path in paths:
+        assert client.get(path).status_code == 401
+        assert client.get(path, headers=authenticated_headers).status_code == 403
+    assert client.patch("/profile", headers=authenticated_headers, json={"role": "admin"}).status_code != 500
+    assert client.get("/admin/overview", headers=authenticated_headers).status_code == 403
+    with database.get_session() as session:
+        session.add(AccountSecurity(user_id=1, role="admin", session_version=0))
+    assert client.get("/profile", headers=authenticated_headers).get_json()["role"] == "admin"
+    listing = client.get("/admin/destinations", headers=authenticated_headers).get_json()
+    from administration import DESTINATION_FIELDS
+    body = {key: listing[0][key] for key in DESTINATION_FIELDS}
+    body.update({"description_fr": "Un lieu agreable.", "version": 0, "image_url": "/images/places/1.jpg"})
+    path = f'/admin/destinations/{listing[0]["id"]}'
+    created = client.post("/admin/destinations", headers=authenticated_headers, json={**body, "name": "New place"})
+    assert created.status_code == 201
+    assert created.get_json()["content_version"] == 1
+    updated = client.patch(path, headers=authenticated_headers, json={**body, "active": False})
+    assert updated.status_code == 200
+    assert updated.get_json()["content_version"] == 1
+    assert client.patch(path, headers=authenticated_headers, json=body).status_code == 409
+    assert all(place["id"] != listing[0]["id"] for place in client.get("/destinations", headers=authenticated_headers).get_json())
+    assert client.get(f'/destinations/{listing[0]["id"]}', headers=authenticated_headers).status_code == 200
+    assert client.patch(path, headers=authenticated_headers, json={**body, "version": 1, "image_url": "javascript:alert(1)"}).status_code == 400
+    assert client.patch(path, headers=authenticated_headers, json={**body, "version": 1}).status_code == 200
+    audit = client.get("/admin/audit", headers=authenticated_headers).get_json()["records"]
+    assert len(audit) == 3
+    assert "password_hash" not in str(audit)
+
+
+def test_admin_fare_validation_audit_and_role_bootstrap(client, authenticated_headers):
+    runner = flask_app_module.app.test_cli_runner()
+    assert runner.invoke(args=["set-admin", "--user-id", "1"]).exit_code != 0
+    assert runner.invoke(args=["set-admin", "--user-id", "1", "--confirm"]).exit_code == 0
+    assert client.get("/admin/fares", headers=authenticated_headers).status_code == 401
+    headers = auth_header(client)
+    policy = client.get("/admin/fares", headers=headers).get_json()[1]
+    path = "/admin/fares/" + policy["id"]
+    assert client.put(path, headers=headers, json={**policy, "base_min": 900, "base_max": 100}).status_code == 400
+    assert client.put(path, headers=headers, json={**policy, "source_url": "javascript:alert(1)"}).status_code == 400
+    assert client.put(path, headers=headers, json={**policy, "id": []}).status_code == 400
+    assert client.put(path, headers=headers, json={**policy, "source_url": "https://[invalid"}).status_code == 400
+    assert client.put(path, headers=headers, json={**policy, "mode": "taxi"}).status_code == 400
+    assert client.put(path, headers=headers, json={**policy, "base_min": 360}).status_code == 200
+    assert client.put(path, headers=headers, json=policy).status_code == 409
+    assert client.get("/fares", headers=headers).get_json()[1]["base_min"] == 360
+    assert client.put(path, headers=headers, json={**policy, "version": 1, "active": False}).status_code == 200
+    assert all(item["id"] != policy["id"] for item in client.get("/fares", headers=headers).get_json())
+    assert len(client.get("/admin/fares", headers=headers).get_json()) == 3
+    assert runner.invoke(args=["set-admin", "--user-id", "1", "--remove", "--confirm"]).exit_code != 0
 
 
 def test_google_disabled_without_client_id(client, monkeypatch):
@@ -592,7 +801,7 @@ def test_profile_activity_and_comment_review_authors(client):
     assert activity["replies"][0]["user_name"] == "Bob"
     assert client.get("/profile/activity", headers=bob).get_json()["reviews"] == []
     assert client.get("/profile/activity").status_code == 401
-    comments = client.get("/destinations/1/comments").get_json()
+    comments = client.get("/destinations/1/comments", headers=alice).get_json()
     assert comments[0]["review"]["rating"] == 5
 
 
@@ -609,7 +818,7 @@ def test_social_migration_preserves_existing_users(tmp_path):
         connection.execute(text("INSERT INTO users (id, name, email, password_hash, preferences, created_at) VALUES (1, 'Existing User', 'existing@example.test', 'hash', '[]', '2026-01-01')"))
     for _ in range(2):
         subprocess.run([*command, "head"], cwd=backend_dir, env=environment, check=True, capture_output=True)
-    assert {"comments", "google_identities", "chat_messages"}.issubset(inspect(engine).get_table_names())
+    assert {"comments", "google_identities", "chat_messages", "account_security", "password_resets", "fare_policies", "destination_publications"}.issubset(inspect(engine).get_table_names())
     with engine.connect() as connection:
         assert connection.execute(text("SELECT name FROM users WHERE id=1")).scalar() == "Existing User"
     engine.dispose()

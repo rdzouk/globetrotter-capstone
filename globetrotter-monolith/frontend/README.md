@@ -53,6 +53,8 @@ For a deployment outside Docker, serve `dist/`, configure a fallback to `index.h
 - `react/src/PlaceDetail.jsx`: details, nearby places, reviews, and comments.
 - `react/src/Trips.jsx`: itineraries, visit reviews, and responsive weekly planner.
 - `react/src/Account.jsx`: email/phone login, registration, profile, and feedback.
+- `react/src/Recovery.jsx`: email/SMS recovery requests and single-use password reset.
+- `react/src/Admin.jsx`: protected catalogue, fare policy and audit management.
 - `react/src/GoogleSignIn.jsx`: Google Identity Services button and verified backend sign-in.
 - `react/src/Chat.jsx`: authenticated community chat, replies, earlier messages, and owned deletion.
 - `react/src/ProfileActivity.jsx`: your reviews, comments, and replies received.
@@ -68,6 +70,34 @@ For a deployment outside Docker, serve `dist/`, configure a fallback to `index.h
 Legacy HTML and scripts have been removed. The only HTML entry point is `react/index.html`, which mounts React; existing `.html` bookmarks still redirect to React routes. Login tokens, display names, and language/theme preferences retain their original localStorage keys.
 
 English/French switching covers interface text, validation, tooltips, dates, numbers, map controls, and the current catalogue of 108 destination descriptions, tags, and 34 neighborhood descriptions. Place/person names, addresses, and user-written comments/chat messages remain in their original form. New catalogue content must receive a translation in `contentTranslations.js`. The source-coverage test rejects untranslated JSX labels.
+
+## Login Required
+
+Guests see `/login` before any application page or data loads. Login and registration use a standalone layout without app navigation. A successful email, phone, or Google sign-in returns to the requested path, query, and fragment. Saved sessions are verified with `/api/profile` before the app is shown; verification failures offer retry or sign-out. Signing out, including in another tab, or receiving an expired-session response closes application access.
+
+The backend independently requires a bearer token for catalogue, nearby/neighborhood information, reviews, comments, feedback, fares, and all existing account/trip/chat endpoints. Registration, login, recovery, Google authentication, health/readiness, and CORS preflight remain public. Shared place links still work, but recipients must sign in first.
+
+## Recovery and Administration Setup
+
+Recovery is available from **Forgot password?** on the login screen. Configure `APP_PUBLIC_URL` to the trusted frontend origin; production requires HTTPS. This URL is never taken from request headers. Reset links expire after 15 minutes, can be used once, and carry a random token in the URL fragment. The reset screen immediately removes that fragment and keeps the token only in memory, so refreshing requires reopening the email/SMS link. New passwords must have 12-128 characters. Successful resets invalidate all older account sessions. Google-only accounts continue with Google, not password reset.
+
+For email, set `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY` (`starttls` or `ssl`), `SMTP_FROM`, and any required `SMTP_USERNAME`/`SMTP_PASSWORD`. For phone-only accounts, configure `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_FROM`; SMS availability and Cameroon delivery require a suitable provider account and enabled destinations. Plain SMTP (`SMTP_SECURITY=none`) is allowed only with a loopback development mail server. Add real credentials directly to the private backend/Compose `.env`, never to source or chat. Restart the backend afterward. Unconfigured channels are disabled. The API never returns or logs reset links, and requests use neutral account-existence responses. Delivery errors are logged without recipient or token. Real delivery requires testing with your configured provider; automated tests substitute the delivery function.
+
+`/admin` is visible only for accounts whose server-side role is `admin`. There is no default administrator and registration cannot assign roles. To promote an existing, explicitly chosen account from `backend/`:
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app app set-admin --user-id 123 --confirm
+```
+
+Replace `123` with the verified intended account ID. For Compose use `docker compose exec backend flask --app app set-admin --user-id 123 --confirm`. The user must sign in again after a role change. `--remove` revokes the role; removing the last administrator is blocked. Never promote an account simply because it was the first to register.
+
+The dashboard creates/edits destinations, archives/restores them without deleting history, maintains English/French descriptions and existing/local or HTTPS photo URLs, edits dated/source-linked fare policies, and displays a paginated audit trail. Newly created places start unpublished. Concurrent edits return a conflict and offer an explicit draft-discard/reload action. Role checks run on every admin API request; there is no user-directory or password-reading interface. Archive is publication status, not confidentiality: an archived place remains viewable by direct link or in prior plans/favorites, but cannot receive new plans. Uploaded-file management and recovery-provider setup are not part of the dashboard.
+
+The additive `20260911_recovery` migration creates `account_security`, `password_resets`, `fare_policies`, and `destination_publications` without replacing existing users, destinations or plans. Back up first, then run `alembic upgrade head` before deploying this backend. Local startup creates missing tables. Do not downgrade to an older backend after resets: it would not enforce session-version revocation. The migration deliberately refuses a security-state downgrade.
+
+## Editable Plans
+
+Unvisited plans can be edited from My trips or the weekly planner using the existing visit form. Dates, time slot, transport and notes are validated by the API; only the owner may edit or cancel. Cancellation needs confirmation and deletes an unvisited plan, not a venue reservation. Completed visits/reviews cannot be edited or cancelled through these endpoints. Archived destinations stay attached to existing plans so history remains readable.
 
 ## Google Sign-up
 
@@ -92,6 +122,12 @@ The production service worker replaces old GlobeTrotter caches and caches only t
 ## Map and Design
 
 The requested mapcn-rn library targets Expo/React Native. This website uses its browser-compatible counterpart, [mapcn](https://mapcn.dev/), as approved. The map is a real MapLibre vector map with CARTO light/dark basemaps, keyboard-accessible place markers, popups, zoom/compass controls, fit-to-places, live location, and driving routes. No map API key is required for the default services; availability and provider usage terms still apply.
+
+**Locate me** requests a fresh, high-accuracy browser position and recenters the map. Coordinates and the device's reported accuracy are displayed; actual precision depends on the device and signal, so desktop Wi-Fi/IP positions can be approximate. Tracking starts only on a location or directions action, stops with the stop control or when leaving the map, and is never saved to localStorage or the app database. The last position is explicitly labeled when tracking stops. HTTPS (or localhost) and browser permission are required; no position is invented when permission is denied or unavailable.
+
+Select a destination and choose **Estimate trip**, or use **Directions** in its popup. **Manual origin** accepts a catalogue landmark, validated latitude/longitude, a map click or a draggable origin marker. It stops GPS tracking and labels the chosen origin separately from a device fix. The selected origin and destination coordinates are sent to OSRM for a driving route. Route distance and estimated driving time are displayed; live traffic is not included. Failed routes can be retried and do not produce a fare.
+
+The fare panel now separates published shared-taxi reference ceilings, crowdsourced low/high distance estimates, quote-only modes and a custom calculator. See [Fare Research](../docs/FARES.md) for source values, dates, limitations and academic-use licensing. Local research is limited to Yaounde and is withheld for routes outside a conservative geographic/distance screen; this screen is not a legal city-boundary test. The **Custom kilometer calculation** uses `round(base FCFA + driving meters / 1000 * FCFA per km)` with empty inputs until the user supplies rates. No automatic nightly multiplier, live quote, moto tariff or service availability is invented.
 
 MapLibre and its worker are lazy-loaded and bundled with the app rather than downloaded from a JavaScript CDN. Basemap tiles remain external and cannot be guaranteed offline. WebGL is required; unsupported browsers receive an explicit fallback message. Attribution is preserved on the map, and the mapcn license is shipped in `static/THIRD_PARTY_NOTICES.txt`.
 

@@ -14,7 +14,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import aliased, joinedload
 
 from database import get_session
-from models import User, Destination, Itinerary, Favorite, Feedback, Comment, GoogleIdentity, ChatMessage
+from models import User, Destination, Itinerary, Favorite, Feedback, Comment, GoogleIdentity, ChatMessage, AccountSecurity, DestinationPublication
 
 
 def _utc_iso(value):
@@ -31,11 +31,15 @@ def _user_to_dict(u):
 
 
 def _destination_to_dict(d):
+    publication = d.publication
     return {
         "id": d.id, "name": d.name, "category": d.category, "neighborhood": d.neighborhood,
         "address": d.address, "lat": d.lat, "lng": d.lng, "rating": d.rating,
         "rating_count": d.rating_count, "price_level": d.price_level, "phone": d.phone,
         "tags": d.tags, "description": d.description, "image_url": d.image_url,
+        "active": publication.active if publication else True,
+        "description_fr": publication.description_fr if publication else "",
+        "content_version": publication.version if publication else 0,
     }
 
 
@@ -48,6 +52,7 @@ def _itinerary_to_dict(i):
         "start_date": i.start_date, "end_date": i.end_date, "time_slot": i.time_slot,
         "transport_mode": i.transport_mode, "notes": i.notes, "shared_with": i.shared_with,
         "visited": i.visited, "review": review,
+        "destination": _destination_to_dict(i.destination) if i.destination else None,
     }
 
 
@@ -73,6 +78,15 @@ def _comment_to_dict(c):
 
 
 # ---- Users ----
+
+def get_account_security(user_id):
+    with get_session() as session:
+        user = session.get(User, user_id)
+        if not user:
+            return None
+        security = session.get(AccountSecurity, user_id)
+        return {"name": user.name, "role": security.role if security else "user", "session_version": security.session_version if security else 0}
+
 
 def get_users():
     with get_session() as s:
@@ -125,9 +139,12 @@ def update_user(user_id, updates):
 
 # ---- Destinations ----
 
-def get_destinations():
+def get_destinations(include_archived=False):
     with get_session() as s:
-        return [_destination_to_dict(d) for d in s.query(Destination).all()]
+        query = s.query(Destination)
+        if not include_archived:
+            query = query.outerjoin(DestinationPublication).filter((DestinationPublication.destination_id.is_(None)) | (DestinationPublication.active.is_(True)))
+        return [_destination_to_dict(d) for d in query.all()]
 
 
 def get_destination_by_id(destination_id):
@@ -186,6 +203,17 @@ def update_itinerary(itinerary_id, updates):
                 setattr(i, key, value)
         s.flush()
         return _itinerary_to_dict(i)
+
+
+def change_pending_itinerary(itinerary_id, user_id, updates=None):
+    with get_session() as session:
+        query = session.query(Itinerary).filter(Itinerary.id == itinerary_id, Itinerary.user_id == user_id, Itinerary.visited.is_(False))
+        if updates is None:
+            return {"removed": True} if query.delete(synchronize_session=False) else None
+        if not query.update(updates, synchronize_session=False):
+            return None
+        session.flush()
+        return _itinerary_to_dict(session.get(Itinerary, itinerary_id))
 
 
 def get_reviews_for_destination(destination_id):

@@ -8,6 +8,10 @@ this becomes a standalone recommendation microservice later.
 """
 
 
+from datetime import date
+import re
+
+
 def search_destinations(destinations, query=None, category=None, neighborhood=None, tag=None):
     """
     query      free-text match on name/neighborhood/description
@@ -58,20 +62,31 @@ def recommend_destinations(destinations, user, past_itineraries, limit=5):
 
 
 def validate_itinerary_payload(payload, valid_destination_ids):
+    if not isinstance(payload, dict):
+        return ["A plan must be a JSON object."]
     errors = []
     if "destination_id" not in payload:
         errors.append("destination_id is required")
-    elif payload["destination_id"] not in valid_destination_ids:
+    elif type(payload["destination_id"]) is not int or payload["destination_id"] not in valid_destination_ids:
         errors.append("destination_id does not match a known destination")
-
-    if "start_date" not in payload:
-        errors.append("start_date is required (YYYY-MM-DD)")
-    if "end_date" not in payload:
-        errors.append("end_date is required (YYYY-MM-DD)")
-    if "start_date" in payload and "end_date" in payload:
-        if payload["end_date"] < payload["start_date"]:
-            errors.append("end_date cannot be before start_date")
-
+    parsed_dates = {}
+    for field in ("start_date", "end_date"):
+        value = payload.get(field)
+        try:
+            if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+                raise ValueError()
+            parsed_dates[field] = date.fromisoformat(value)
+        except ValueError:
+            errors.append(f"{field} must be a valid date (YYYY-MM-DD)")
+    if len(parsed_dates) == 2 and parsed_dates["end_date"] < parsed_dates["start_date"]:
+        errors.append("end_date cannot be before start_date")
+    time_slot = payload.get("time_slot", "")
+    if not isinstance(time_slot, str) or (time_slot and (not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d-(?:[01]\d|2[0-3]):[0-5]\d", time_slot) or time_slot[:5] >= time_slot[6:])):
+        errors.append("Time slot must have an end time after its start time.")
+    if payload.get("transport_mode", "") not in ("", "taxi", "moto", "yango", "own"):
+        errors.append("Choose a supported transport mode.")
+    if not isinstance(payload.get("notes", ""), str) or len(payload.get("notes", "")) > 4000:
+        errors.append("Notes must be at most 4000 characters.")
     return errors
 
 

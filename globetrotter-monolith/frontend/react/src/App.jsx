@@ -27,6 +27,7 @@ import {
   Moon,
   Route as RouteIcon,
   Sparkles,
+  ShieldCheck,
   Sun,
   UserRound,
   X,
@@ -40,6 +41,8 @@ import Trips from "./Trips";
 import { AuthPage, Feedback, Profile } from "./Account";
 
 const Chat = lazy(() => import('./Chat'));
+const Recovery = lazy(() => import('./Recovery'));
+const Admin = lazy(() => import('./Admin'));
 
 const navigation = [
   ["/", "Explore", Compass],
@@ -61,7 +64,10 @@ const titles = {
   "/feedback": "Feedback",
   "/login": "Sign in",
   "/register": "Create account",
+  "/forgot-password": "Recover your account",
+  "/reset-password": "Reset password",
   "/chat": "Community chat",
+  "/admin": "Administration",
 };
 
 function RequireAuth({ children }) {
@@ -193,6 +199,7 @@ function Sidebar({ menuOpen, setMenuOpen }) {
         ))}
       </nav>
       <div className="sidebar-bottom">
+        {session.role === 'admin' && <NavLink to="/admin" className="nav-item"><ShieldCheck size={19} />{translate('Administration')}</NavLink>}
         <div className="city-note">
           <span className="city-dot" />
           <div>
@@ -226,7 +233,7 @@ function Sidebar({ menuOpen, setMenuOpen }) {
               aria-label={translate("Sign out")}
               onClick={() => {
                 signOut();
-                navigate("/");
+                navigate("/login", { replace: true });
               }}
             >
               <LogOut size={18} />
@@ -244,7 +251,7 @@ function Sidebar({ menuOpen, setMenuOpen }) {
 }
 
 export default function App() {
-  const { session, toast, setToast, translate, language } = useApp();
+  const { session, sessionError, retrySession, signOut, toast, setToast, translate, language } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
   const mainRef = useRef(null);
@@ -271,6 +278,7 @@ export default function App() {
     const previous = document.activeElement;
     const overflow = document.body.style.overflow;
     const sidebar = document.getElementById("main-navigation");
+    if (!sidebar) return;
     const controls = [...sidebar.querySelectorAll("a, button, select")].filter(
       (control) => control.getClientRects().length,
     );
@@ -297,14 +305,22 @@ export default function App() {
       previous?.focus();
     };
   }, [menuOpen]);
+  const isAuthPage = /^\/(login|register|forgot-password|reset-password)\/?$/.test(location.pathname);
+  if (session.token && !session.verified) {
+    return <main className="session-check">{sessionError ? <Empty title="Unable to verify your session" message={sessionError}><button className="button" onClick={retrySession}>{translate("Try again")}</button><button className="button secondary" onClick={signOut}>{translate("Sign out")}</button></Empty> : <Loading />}</main>;
+  }
+  if (!session.token && !isAuthPage) {
+    return <Navigate to="/login" state={{ from: location.pathname + location.search + location.hash }} replace />;
+  }
   function plan(place) {
+    if (place.active === false) { setToast({ message: 'This destination is archived and unavailable for new plans.', error: true }); return; }
     if (!session.token)
       navigate("/login", { state: { from: `/places/${place.id}` } });
     else setBooking(place);
   }
   const shortName = session.name.trim().split(" ")[0] || translate("Traveler");
   return (
-    <div className="app-shell" onInvalidCapture={event => {
+    <div className={`app-shell${isAuthPage ? " auth-shell" : ""}`} onInvalidCapture={event => {
       const input = event.target;
       if (!input.setCustomValidity) return;
       input.setCustomValidity('');
@@ -313,18 +329,18 @@ export default function App() {
       <a className="skip-link" href="#main-content">
         {translate("Skip to content")}
       </a>
-      {menuOpen && (
+      {!isAuthPage && menuOpen && (
         <button
           className="menu-overlay"
           aria-label={translate("Close navigation")}
           onClick={() => setMenuOpen(false)}
         />
       )}
-      <Sidebar menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
+      {!isAuthPage && <Sidebar menuOpen={menuOpen} setMenuOpen={setMenuOpen} />}
       <div className="main-shell" inert={menuOpen ? true : undefined}>
         <header className="topbar">
           <div className="topbar-left">
-            <button
+            {isAuthPage ? <Link className="brand" to="/login"><Globe2 size={26} /><span>globe<span className="brand-light">trotter</span></span></Link> : <><button
               className="icon-button menu-toggle"
               aria-label={translate("Open navigation")}
               title={translate("Open navigation")}
@@ -341,6 +357,7 @@ export default function App() {
               <Globe2 size={22} />
               globetrotter
             </Link>
+            </>}
           </div>
           <div className="topbar-right">
             <span className="city-location">
@@ -348,7 +365,7 @@ export default function App() {
               <span>{translate("Yaounde, Cameroon")}</span>
             </span>
             <ThemeControls />
-            <Link
+            {isAuthPage ? <AppearanceControls /> : <Link
               className="topbar-account"
               to={session.token ? "/profile" : "/login"}
               aria-label={translate(session.token ? "My profile" : "Sign in")}
@@ -361,7 +378,7 @@ export default function App() {
                 <UserRound size={20} />
               )}
               <span>{session.token ? shortName : translate("Sign in")}</span>
-            </Link>
+            </Link>}
           </div>
         </header>
         <main
@@ -422,8 +439,11 @@ export default function App() {
               }
             />
             <Route path="/feedback" element={<Feedback />} />
+            <Route path="/admin" element={<RequireAuth><Suspense fallback={<Loading />}><Admin /></Suspense></RequireAuth>} />
             <Route path="/chat" element={<RequireAuth><Suspense fallback={<Loading />}><Chat /></Suspense></RequireAuth>} />
             <Route path="/login" element={<AuthPage key="login" />} />
+            <Route path="/forgot-password" element={<Suspense fallback={<Loading />}><Recovery key="forgot" /></Suspense>} />
+            <Route path="/reset-password" element={<Suspense fallback={<Loading />}><Recovery key="reset" reset /></Suspense>} />
             <Route
               path="/register"
               element={<AuthPage key="register" register />}
@@ -459,14 +479,14 @@ export default function App() {
           <footer className="page-footer">
             <span>GlobeTrotter</span>
             <span>{translate("Made for a world worth exploring.")}</span>
-            <Link to="/feedback">
+            {!isAuthPage && <Link to="/feedback">
               {translate("Share feedback")}
               <ArrowUpRight size={13} />
-            </Link>
+            </Link>}
           </footer>
         </main>
       </div>
-      <nav
+      {!isAuthPage && <nav
         className="bottom-nav"
         aria-label={translate("Mobile navigation")}
         inert={menuOpen ? true : undefined}
@@ -483,7 +503,7 @@ export default function App() {
             <span>{translate(label)}</span>
           </NavLink>
         ))}
-      </nav>
+      </nav>}
       {booking && (
         <BookingModal place={booking} onClose={() => setBooking(null)} />
       )}

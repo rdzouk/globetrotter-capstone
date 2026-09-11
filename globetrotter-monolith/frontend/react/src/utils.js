@@ -17,11 +17,30 @@ export function formatDate(value) {
   return new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+export function estimateFare(distanceMeters, baseFare, perKilometer) {
+  if (![distanceMeters, baseFare, perKilometer].every(value => Number.isFinite(value) && value >= 0)) return null;
+  const total = baseFare + distanceMeters / 1000 * perKilometer;
+  return Number.isFinite(total) ? Math.round(total) : null;
+}
+
+export function estimateFareRange(distanceMeters, policy) {
+  if (!policy?.active || policy.model !== 'distance' || policy.base_min > policy.base_max || policy.per_km_min > policy.per_km_max) return null;
+  const low = estimateFare(distanceMeters, policy.base_min, policy.per_km_min);
+  const high = estimateFare(distanceMeters, policy.base_max, policy.per_km_max);
+  return low === null || high === null ? null : { low, high };
+}
+
+export function withinYaounde(origin, destination, distanceMeters) {
+  return Number.isFinite(distanceMeters) && distanceMeters >= 0 && distanceMeters <= 50000 && [origin, destination].every(coordinates => Array.isArray(coordinates) && coordinates[0] >= 11.35 && coordinates[0] <= 11.7 && coordinates[1] >= 3.7 && coordinates[1] <= 4.05);
+}
+
 export function placeImage(place) {
-  if (Number.isInteger(place.id) && place.id > 0 && place.id <= 107) return `/images/places/${place.id}.jpg`;
   const source = place.image_url || '';
   if (source.startsWith('/static/images/')) return source.replace('/static/', '/');
-  return /^https?:\/\//.test(source) || source.startsWith('/images/') ? source : '';
+  if (source.startsWith('/images/') || /^https:\/\//.test(source)) return source;
+  if (place.content_version > 0) return '';
+  if (Number.isInteger(place.id) && place.id > 0) return `/images/places/${place.id}.jpg`;
+  return /^http:\/\//.test(source) ? source : '';
 }
 
 export function weekDays(value) {

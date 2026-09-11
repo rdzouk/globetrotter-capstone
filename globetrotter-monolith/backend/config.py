@@ -46,6 +46,16 @@ def _require(name, dev_default=None):
 
 JWT_SECRET = _require("JWT_SECRET", dev_default="dev-secret-change-me-in-production")
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "" if IS_PRODUCTION else "http://127.0.0.1:5173").strip()
+SMTP_HOST = os.environ.get("SMTP_HOST", "").strip()
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_SECURITY = os.environ.get("SMTP_SECURITY", "starttls")
+SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_FROM = os.environ.get("SMTP_FROM", "")
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
+TWILIO_FROM = os.environ.get("TWILIO_FROM", "")
 
 DATABASE_URL = os.environ.get("DATABASE_URL")  # None until the Postgres migration lands
 

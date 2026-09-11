@@ -36,6 +36,9 @@ import database
 import data_access as db
 import business_logic as logic
 import google_signin
+import recovery
+import fares
+from administration import register_administration
 
 database.init_db()
 
@@ -80,13 +83,22 @@ def require_auth(f):
             return jsonify({"error": "Token expired"}), 401
         except jwt.InvalidTokenError:
             return jsonify({"error": "Invalid token"}), 401
+        if type(payload.get("sub")) is not int:
+            return jsonify({"error": "Invalid token"}), 401
+        security = db.get_account_security(payload["sub"])
+        if not security or payload.get("ver", 0) != security["session_version"]:
+            return jsonify({"error": "Your session has expired. Please sign in again."}), 401
         request.user_id = payload["sub"]
-        request.user_name = payload["name"]
+        request.user_name = security["name"]
+        request.user_role = security["role"]
         return f(*args, **kwargs)
     return wrapper
 
 
 # ---------------------------------------------------------------------
+register_administration(app, require_auth)
+
+
 # Request lifecycle: ID assignment, timing, structured logging,
 # security headers on every response.
 # ---------------------------------------------------------------------
@@ -106,7 +118,7 @@ def finish_request(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    if request.headers.get("Authorization") or request.path.startswith("/auth/") or request.path in ("/login", "/register"):
+    if response.status_code == 401 or request.headers.get("Authorization") or request.path.startswith("/auth/") or request.path in ("/login", "/register"):
         response.headers["Cache-Control"] = "no-store"
     if config.IS_PRODUCTION:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
@@ -211,8 +223,45 @@ def login():
     if not user or not auth.verify_password(password, user["password_hash"]):
         return jsonify({"error": "invalid credentials"}), 401
 
-    token = auth.issue_token(user["id"], user["name"])
-    return jsonify({"token": token, "name": user["name"], "id": user["id"]}), 200
+    security = db.get_account_security(user["id"])
+    token = auth.issue_token(user["id"], user["name"], security["session_version"])
+    return jsonify({"token": token, "name": user["name"], "id": user["id"], "role": security["role"]}), 200
+
+
+@app.route("/auth/recovery/config", methods=["GET"])
+def recovery_config():
+    return jsonify(recovery.delivery_channels())
+
+
+@app.route("/auth/recovery", methods=["POST"])
+@limiter.limit("5 per minute; 20 per hour")
+def start_recovery():
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "Enter a valid email address or phone number."}), 400
+    channel = body.get("channel")
+    identity = recovery.normalize_identity(body.get("identifier"), channel)
+    if not identity:
+        return jsonify({"error": "Enter a valid email address or phone number."}), 400
+    if not recovery.delivery_channels().get(channel):
+        return jsonify({"error": "This recovery delivery method is not configured yet."}), 503
+    try:
+        recovery.request_reset(identity, channel)
+    except Exception:
+        logger.warning("Account recovery delivery failed; check delivery configuration.")
+    return jsonify({"message": "If a matching password account exists, a reset link will arrive shortly. Check your spam folder too."}), 202
+
+
+@app.route("/auth/recovery/reset", methods=["POST"])
+@limiter.limit("5 per minute; 30 per hour")
+def finish_recovery():
+    body = request.get_json(silent=True)
+    password = body.get("password") if isinstance(body, dict) else None
+    if not isinstance(password, str) or not 12 <= len(password) <= 128:
+        return jsonify({"error": "Use a password between 12 and 128 characters."}), 400
+    if not recovery.complete_reset(body.get("token"), password):
+        return jsonify({"error": "This reset link is invalid or expired. Request a new one."}), 400
+    return jsonify({"message": "Password changed. Sign in with your new password."}), 200
 
 
 @app.route("/auth/google/config", methods=["GET"])
@@ -250,7 +299,8 @@ def google_login():
         return jsonify({"error": str(error)}), 409
     except IntegrityError:
         return jsonify({"error": "Account changed while signing in. Please try again."}), 409
-    response = jsonify({"token": auth.issue_token(user["id"], user["name"]), "name": user["name"], "id": user["id"]})
+    security = db.get_account_security(user["id"])
+    response = jsonify({"token": auth.issue_token(user["id"], user["name"], security["session_version"]), "name": user["name"], "id": user["id"], "role": security["role"]})
     response.delete_cookie("gt_google_nonce", path="/")
     return response, 201 if created else 200
 
@@ -259,6 +309,7 @@ def google_login():
 # GET /destinations
 # ---------------------------------------------------------------------
 @app.route("/destinations", methods=["GET"])
+@require_auth
 def destinations():
     query = request.args.get("q")
     category = request.args.get("category")
@@ -266,6 +317,19 @@ def destinations():
     tag = request.args.get("tag")
     results = logic.search_destinations(db.get_destinations(), query, category, neighborhood, tag)
     return jsonify(results), 200
+
+
+@app.route("/fares", methods=["GET"])
+@require_auth
+def fare_policies():
+    return jsonify(fares.list_policies())
+
+
+@app.route("/destinations/<int:destination_id>", methods=["GET"])
+@require_auth
+def get_destination(destination_id):
+    place = db.get_destination_by_id(destination_id)
+    return (jsonify(place), 200) if place else (jsonify({"error": "destination not found"}), 404)
 
 
 # ---------------------------------------------------------------------
@@ -350,11 +414,35 @@ def mark_visited(itinerary_id):
 
 
 # ---------------------------------------------------------------------
+@app.route("/itineraries/<int:itinerary_id>", methods=["PATCH", "DELETE"])
+@require_auth
+def change_plan(itinerary_id):
+    itinerary = db.get_itinerary_by_id(itinerary_id)
+    if not itinerary or itinerary["user_id"] != request.user_id:
+        return jsonify({"error": "itinerary not found"}), 404
+    if itinerary["visited"]:
+        return jsonify({"error": "Completed visits cannot be edited or cancelled."}), 409
+    updates = None
+    if request.method == "PATCH":
+        updates = request.get_json(silent=True)
+        allowed = {"destination_id", "start_date", "end_date", "time_slot", "transport_mode", "notes"}
+        if not isinstance(updates, dict) or not updates or set(updates) - allowed:
+            return jsonify({"error": "Only plan details can be changed."}), 400
+        errors = logic.validate_itinerary_payload({**itinerary, **updates}, {place["id"] for place in db.get_destinations()} | {itinerary["destination_id"]})
+        if errors:
+            return jsonify({"errors": errors}), 400
+    result = db.change_pending_itinerary(itinerary_id, request.user_id, updates)
+    if result is None:
+        return jsonify({"error": "The plan changed. Refresh and try again."}), 409
+    return jsonify(result), 200
+
+
 # GET /destinations/<id>/reviews
 # Every user's review of this place — this is the "place page" of
-# reviews and critiques, public so anyone browsing can read them.
+# reviews and critiques, available to signed-in travelers.
 # ---------------------------------------------------------------------
 @app.route("/destinations/<int:destination_id>/reviews", methods=["GET"])
+@require_auth
 def destination_reviews(destination_id):
     if not db.get_destination_by_id(destination_id):
         return jsonify({"error": "destination not found"}), 404
@@ -365,6 +453,7 @@ def destination_reviews(destination_id):
 # Place comments / replies
 # ---------------------------------------------------------------------
 @app.route("/destinations/<int:destination_id>/comments", methods=["GET"])
+@require_auth
 def list_destination_comments(destination_id):
     if not db.get_destination_by_id(destination_id):
         return jsonify({"error": "destination not found"}), 404
@@ -432,6 +521,7 @@ def submit_feedback():
 # "places nearby" section on the place detail page.
 # ---------------------------------------------------------------------
 @app.route("/destinations/<int:destination_id>/nearby", methods=["GET"])
+@require_auth
 def nearby_destinations(destination_id):
     origin = db.get_destination_by_id(destination_id)
     if not origin:
@@ -448,6 +538,7 @@ def nearby_destinations(destination_id):
 # are nearby and how many places we have listed there.
 # ---------------------------------------------------------------------
 @app.route("/neighborhoods/<name>", methods=["GET"])
+@require_auth
 def neighborhood_info(name):
     info = logic.NEIGHBORHOOD_INFO.get(name)
     if not info:
@@ -463,9 +554,10 @@ def neighborhood_info(name):
 
 # ---------------------------------------------------------------------
 # GET /feedback
-# Public listing of app feedback — an "about this app" / reviews page.
+# Listing of app feedback for signed-in travelers.
 # ---------------------------------------------------------------------
 @app.route("/feedback", methods=["GET"])
+@require_auth
 def list_feedback():
     return jsonify(db.get_feedback()), 200
 
@@ -482,6 +574,7 @@ def get_profile():
     return jsonify({
         "id": user["id"], "name": user["name"], "email": user["email"],
         "phone": user["phone"], "preferences": user["preferences"],
+        "role": request.user_role,
     }), 200
 
 

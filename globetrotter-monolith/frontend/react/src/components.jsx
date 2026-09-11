@@ -91,12 +91,12 @@ function ShareModal({ place, onClose }) {
 }
 
 export function PlaceCard({ place, onPlan, compact = false }) {
-  const { translate, number } = useApp();
+  const { translate, number, language } = useApp();
   return <article className={`place-card ${compact ? 'compact' : ''}`}>
     <div className="place-photo"><Link to={`/places/${place.id}`} tabIndex={-1} aria-hidden="true"><PlaceImage place={place} loading="lazy" /></Link><span className="category-label">{translate(categories[place.category] || place.category)}</span><SaveButton place={place} /></div>
     <div className="place-body"><div className="place-title-row"><h2><Link to={`/places/${place.id}`}>{place.name}</Link></h2><span className="rating"><Star size={14} fill="currentColor" />{number(place.rating || 0, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span></div>
       <p className="place-location"><MapPin size={14} />{place.neighborhood || 'Yaounde'}<span className="price">{'$'.repeat(Math.min(4, Math.max(0, place.price_level || 0)))}</span></p>
-      <p className="place-description">{translate(place.description)}</p>
+      <p className="place-description">{language === 'fr' && place.description_fr ? place.description_fr : translate(place.description)}</p>
       <DestinationActions place={place} />
       <div className="place-footer"><span className="place-tag">{translate((place.tags?.find(tag => tag !== place.category) || 'local favorite').replaceAll('-', ' '))}</span><button className="text-button" onClick={() => onPlan(place)}>{translate('Plan a visit')}<ArrowRight size={16} /></button></div>
     </div>
@@ -116,10 +116,10 @@ export function Modal({ title, children, onClose }) {
   }, []);
   return <dialog ref={ref} className="modal" aria-labelledby={titleId} onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => { if (event.target === event.currentTarget) onClose(); }}><div className="modal-content"><div className="modal-heading"><h2 id={titleId}>{translate(title)}</h2><button className="icon-button" onClick={onClose} title={translate('Close')} aria-label={translate('Close dialog')}><X size={22} /></button></div>{children}</div></dialog>;
 }
-export function BookingModal({ place, onClose }) {
+export function BookingModal({ place, trip = null, onClose }) {
   const { setToast, updateTrips, translate } = useApp();
-  const [start, setStart] = useState(localDate());
-  const [end, setEnd] = useState(localDate());
+  const [start, setStart] = useState(trip?.start_date || localDate());
+  const [end, setEnd] = useState(trip?.end_date || localDate());
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   async function submit(event) {
@@ -128,20 +128,20 @@ export function BookingModal({ place, onClose }) {
     setBusy(true);
     setError('');
     try {
-      await api('/itineraries', { method: 'POST', body: { ...values, destination_id: place.id } });
+      await api(trip ? `/itineraries/${trip.id}` : '/itineraries', { method: trip ? 'PATCH' : 'POST', body: { ...values, destination_id: place.id } });
       updateTrips();
-      setToast({ message: 'Visit added to your trips.' });
+      setToast({ message: trip ? 'Plan updated.' : 'Visit added to your trips.' });
       onClose();
     } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   }
-  return <Modal title="Plan a visit" onClose={onClose}>
+  return <Modal title={trip ? 'Edit plan' : 'Plan a visit'} onClose={() => { if (!busy) onClose(); }}>
     <div className="booking-place"><PlaceImage place={place} /><div><strong>{place.name}</strong><p>{place.neighborhood}</p></div></div>
     <form onSubmit={submit} className="form-stack">
-      <div className="form-grid"><Label>Start date<input required type="date" name="start_date" min={localDate()} value={start} onChange={event => { setStart(event.target.value); if (end < event.target.value) setEnd(event.target.value); }} /></Label><Label>End date<input required type="date" name="end_date" min={start} value={end} onChange={event => setEnd(event.target.value)} /></Label></div>
-      <div className="form-grid"><Label>Time slot<input name="time_slot" placeholder="09:00-11:00" pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]-(?:[01][0-9]|2[0-3]):[0-5][0-9]" /></Label><Label>Transport<select name="transport_mode">{[['', 'Not decided'], ['taxi', 'Shared taxi'], ['moto', 'Moto-taxi'], ['yango', 'Yango'], ['own', 'Own vehicle']].map(([value, label]) => <option key={value} value={value}>{translate(label)}</option>)}</select></Label></div>
-      <Label>Notes<textarea name="notes" rows={3} placeholder={translate('Anything to remember?')} maxLength={4000} /></Label>
-      <ErrorMessage>{error}</ErrorMessage><button className="button" disabled={busy}><CalendarPlus size={18} />{translate(busy ? 'Saving...' : 'Add to my trips')}</button>
+      <div className="form-grid"><Label>Start date<input required type="date" name="start_date" min={trip ? undefined : localDate()} value={start} onChange={event => { setStart(event.target.value); if (end < event.target.value) setEnd(event.target.value); }} /></Label><Label>End date<input required type="date" name="end_date" min={start} value={end} onChange={event => setEnd(event.target.value)} /></Label></div>
+      <div className="form-grid"><Label>Time slot<input name="time_slot" defaultValue={trip?.time_slot || ''} placeholder="09:00-11:00" pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]-(?:[01][0-9]|2[0-3]):[0-5][0-9]" /></Label><Label>Transport<select name="transport_mode" defaultValue={trip?.transport_mode || ''}>{[['', 'Not decided'], ['taxi', 'Shared taxi'], ['moto', 'Moto-taxi'], ['yango', 'Yango'], ['own', 'Own vehicle']].map(([value, label]) => <option key={value} value={value}>{translate(label)}</option>)}</select></Label></div>
+      <Label>Notes<textarea name="notes" defaultValue={trip?.notes || ''} rows={3} placeholder={translate('Anything to remember?')} maxLength={4000} /></Label>
+      <ErrorMessage>{error}</ErrorMessage><button className="button" disabled={busy}><CalendarPlus size={18} />{translate(busy ? 'Saving...' : trip ? 'Save changes' : 'Add to my trips')}</button>
     </form>
   </Modal>;
 }
