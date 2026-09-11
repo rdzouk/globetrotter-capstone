@@ -306,7 +306,7 @@ function CancelPlanModal({ trip, name, onClose }) {
     } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   }
-  return <Modal title="Cancel this plan?" onClose={() => { if (!busy) onClose(); }}><p>{translate('Remove your planned visit to {name}? This does not cancel a reservation with the venue.', { name })}</p><ErrorMessage>{error}</ErrorMessage><div className="plan-actions"><button className="button secondary" disabled={busy} onClick={onClose}>{translate('Keep plan')}</button><button className="button" disabled={busy} onClick={cancel}><Trash2 size={17} />{translate(busy ? 'Saving...' : 'Cancel plan')}</button></div></Modal>;
+  return <Modal title="Cancel this plan?" onClose={onClose} dismissable={!busy}><p>{translate('Remove your planned visit to {name}? This does not cancel a reservation with the venue.', { name })}</p><ErrorMessage>{error}</ErrorMessage><div className="plan-actions"><button className="button secondary" disabled={busy} onClick={onClose}>{translate('Keep plan')}</button><button className="button" disabled={busy} onClick={cancel}><Trash2 size={17} />{translate(busy ? 'Saving...' : 'Cancel plan')}</button></div></Modal>;
 }
 
 function ReviewModal({ trip, onClose, onSaved }) {

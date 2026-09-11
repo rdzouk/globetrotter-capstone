@@ -64,7 +64,7 @@ function DestinationEditor({ place, onClose, onSaved, onReload }) {
     catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   }
-  return <Modal title={place.id ? 'Edit destination' : 'Add destination'} onClose={() => { if (!busy) onClose(); }}><form className="form-stack admin-editor" onSubmit={submit}>
+  return <Modal title={place.id ? 'Edit destination' : 'Add destination'} onClose={onClose} dismissable={!busy}><form className="form-stack admin-editor" onSubmit={submit}>
     <div className="form-grid"><Label>Place name<input name="name" defaultValue={place.name || ''} required maxLength={200} /></Label><Label>Category<select name="category" defaultValue={place.category || 'restaurant'}>{Object.entries(categories).map(([value, label]) => <option key={value} value={value}>{translate(label)}</option>)}</select></Label></div>
     <div className="form-grid"><Label>Neighborhood<input name="neighborhood" defaultValue={place.neighborhood || ''} required maxLength={100} /></Label><Label>Address<input name="address" defaultValue={place.address || ''} required maxLength={300} /></Label></div>
     <div className="form-grid"><Label>Latitude<input name="lat" type="number" min="-90" max="90" step="any" defaultValue={place.lat ?? ''} required /></Label><Label>Longitude<input name="lng" type="number" min="-180" max="180" step="any" defaultValue={place.lng ?? ''} required /></Label></div>
@@ -109,7 +109,7 @@ function FareEditor({ policy, onClose, onSaved, onReload }) {
     catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   }
-  return <Modal title="Edit fare policy" onClose={() => { if (!busy) onClose(); }}><form className="form-stack admin-editor" onSubmit={submit}>
+  return <Modal title="Edit fare policy" onClose={onClose} dismissable={!busy}><form className="form-stack admin-editor" onSubmit={submit}>
     <div className="form-grid"><Label>Pricing model<select value={model} onChange={event => setModel(event.target.value)}>{[['reference', 'Published reference ceilings'], ['distance', 'Distance estimate'], ['quote', 'Quote required']].map(([value, label]) => <option key={value} value={value}>{translate(label)}</option>)}</select></Label><Label>Pricing basis<select name="basis" defaultValue={policy.basis}><option value="passenger">{translate('Per passenger')}</option><option value="vehicle">{translate('Per vehicle')}</option></select></Label></div>
     <div className="form-grid">{[['base_min', 'Lower base (FCFA)'], ['base_max', 'Upper base (FCFA)'], ['per_km_min', 'Lower rate per km (FCFA)'], ['per_km_max', 'Upper rate per km (FCFA)']].map(([field, label]) => <Label key={field}>{label}<input name={field} type="number" min="0" max="1000000" step="any" defaultValue={policy[field]} disabled={model === 'quote' || (model !== 'distance' && field.startsWith('per_km'))} required /></Label>)}</div>
     <Label>Source name<input name="source_name" defaultValue={policy.source_name} maxLength={500} required /></Label>

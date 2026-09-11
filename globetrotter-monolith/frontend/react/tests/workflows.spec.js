@@ -12,6 +12,9 @@ const farePolicies = [
   { id: 'yaounde-moto', city: 'Yaounde', mode: 'moto', model: 'quote', basis: 'passenger', base_min: 0, base_max: 0, per_km_min: 0, per_km_max: 0, source_name: 'Yango Cameroon', source_url: 'https://yango.com/en_cm/', source_date: null, checked_at: '2026-09-11', notes_en: 'Ask the provider.', notes_fr: 'Demandez au prestataire.', source_type: 'provider', active: true, version: 0 },
 ];
 
+// A first map visit compiles the lazy MapLibre chunk, which is slow on a cold dev server.
+const MAP_READY = { timeout: 30000 };
+
 async function mockApi(page, authenticated = true) {
   const state = { favorites: [], trips: [], comments: [], feedback: [], messages: [], calls: [], activity: { reviews: [], comments: [], replies: [] }, profile: { id: 1, name: 'Test Traveler', email: 'traveler@example.test', phone: null, preferences: ['outdoor'] } };
   await page.addInitScript(({ authenticated }) => {
@@ -229,7 +232,8 @@ test('administrators manage destinations, fare sources and audit history while o
     return route.fulfill({ status: 404, json: {} });
   });
   await page.goto('/admin');
-  await expect(page.getByRole('heading', { name: 'Access restricted' })).toBeVisible();
+  // First hit compiles the lazy admin chunk, which is slow on a cold dev server.
+  await expect(page.getByRole('heading', { name: 'Access restricted' })).toBeVisible({ timeout: 15000 });
   state.profile.role = 'admin';
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Administration', exact: true })).toBeVisible();
@@ -388,7 +392,7 @@ test('map markers, live location, directions, and booking work together', async 
   await page.route('https://basemaps.cartocdn.com/gl/**/style.json', route => route.fulfill({ json: { version: 8, sources: {}, layers: [{ id: 'test-background', type: 'background', paint: { 'background-color': route.request().url().includes('dark-matter') ? '#202625' : '#dfece5' } }] } }));
   await page.route('https://router.project-osrm.org/**', route => route.fulfill({ json: { routes: [{ distance: 1200, duration: 300, geometry: { coordinates: [[11.51, 3.88], [11.512, 3.885]] } }] } }));
   await page.goto('/map');
-  await expect(page.locator('.map-section')).toHaveAttribute('data-map-ready', 'true', { timeout: 15000 });
+  await expect(page.locator('.map-section')).toHaveAttribute('data-map-ready', 'true', MAP_READY);
   await expect(page.locator('.place-marker')).toHaveCount(2);
   await page.getByRole('button', { name: 'Locate me', exact: true }).click();
   await expect(page.locator('.location-summary')).toContainText('Latitude 3.88000, longitude 11.51000');
@@ -461,7 +465,7 @@ test('manual origins route from landmarks and coordinates without asking for GPS
   const routes = [];
   await page.route('https://router.project-osrm.org/**', route => { routes.push(route.request().url()); return route.fulfill({ json: { routes: [{ distance: 1200, duration: 300, geometry: { coordinates: [[11.49, 3.91], [11.512, 3.885]] } }] } }); });
   await page.goto('/map?place=1');
-  await expect(page.locator('.map-section')).toHaveAttribute('data-map-ready', 'true', { timeout: 15000 });
+  await expect(page.locator('.map-section')).toHaveAttribute('data-map-ready', 'true', MAP_READY);
   await page.getByRole('button', { name: 'Manual origin', exact: true }).click();
   await page.getByRole('button', { name: 'Estimate trip', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Choose a manual starting point first.');
@@ -495,7 +499,7 @@ test('trip estimates retry failed routes and never quote invalid route data', as
     return routeState === 'unavailable' ? route.fulfill({ status: 503, json: {} }) : route.fulfill({ json: { routes: [{ distance: routeState === 'invalid' ? -100 : 1200, duration: 300, geometry: { coordinates: [[11.51, 3.88], [11.512, 3.885]] } }] } });
   });
   await page.goto('/map?place=1');
-  await expect(page.locator('.map-section')).toHaveAttribute('data-map-ready', 'true', { timeout: 15000 });
+  await expect(page.locator('.map-section')).toHaveAttribute('data-map-ready', 'true', MAP_READY);
   await page.getByRole('button', { name: 'Estimate trip', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Directions are unavailable right now.');
   await expect(page.locator('.route-summary')).toHaveCount(0);
@@ -540,11 +544,40 @@ test('layout, dialogs, preferences, and old links work on both device sizes', as
   await page.getByRole('button', { name: 'Switch to light mode' }).click();
   await page.getByRole('button', { name: 'Plan a visit', exact: true }).first().click();
   await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveAttribute('data-settled', 'true');
   expect(await page.getByRole('dialog').evaluate(dialog => { const bounds = dialog.getBoundingClientRect(); return bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight; })).toBe(true);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).not.toBeVisible();
   await page.goto('/favorites.html');
   await expect(page).toHaveURL(/\/favorites$/);
+});
+
+test('sheet gestures track the drag, spring back from a short pull, and dismiss on a flick', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'phone', 'Sheets are presented as draggable panels on the phone layout.');
+  await mockApi(page);
+  await page.goto('/?category=restaurant');
+  await page.getByRole('button', { name: 'Plan a visit', exact: true }).first().click();
+  const sheet = page.getByRole('dialog');
+  await expect(sheet).toHaveAttribute('data-settled', 'true');
+  await page.screenshot({ path: testInfo.outputPath('sheet-presented.png') });
+  const grip = await page.locator('.sheet-grabber').boundingBox();
+  const centre = { x: grip.x + grip.width / 2, y: grip.y + grip.height / 2 };
+  const offset = () => sheet.evaluate(dialog => new DOMMatrixReadOnly(getComputedStyle(dialog).transform).m42);
+
+  await page.mouse.move(centre.x, centre.y);
+  await page.mouse.down();
+  for (const distance of [10, 20, 30]) { await page.mouse.move(centre.x, centre.y + distance); await page.waitForTimeout(50); }
+  expect(await offset()).toBeGreaterThan(15);
+  await page.screenshot({ path: testInfo.outputPath('sheet-dragged.png') });
+  await page.mouse.up();
+  await expect.poll(offset).toBeLessThan(1);
+  await expect(sheet).toBeVisible();
+
+  await page.mouse.move(centre.x, centre.y);
+  await page.mouse.down();
+  for (const distance of [60, 120, 180, 240, 300]) await page.mouse.move(centre.x, centre.y + distance);
+  await page.mouse.up();
+  await expect(sheet).not.toBeVisible();
 });
 
 test('theme persists and system mode follows device changes', async ({ page }) => {
@@ -582,7 +615,7 @@ test('map location denial is recoverable without losing place access', async ({ 
     }, clearWatch: watch => window.clearedLocationWatches.push(watch) } });
   });
   await page.goto('/map');
-  await expect(page.locator('.map-section')).toHaveAttribute('data-map-ready', 'true', { timeout: 15000 });
+  await expect(page.locator('.map-section')).toHaveAttribute('data-map-ready', 'true', MAP_READY);
   await page.getByRole('button', { name: 'Locate me', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Location access was denied');
   await expect(page.getByRole('img', { name: 'Your location', exact: true })).toHaveCount(0);

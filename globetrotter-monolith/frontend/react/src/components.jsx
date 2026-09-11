@@ -1,8 +1,9 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Heart, MapPin, Star, X, RefreshCw, SearchX, LoaderCircle, CalendarPlus, ImageOff, Share2, MessageCircle, Navigation, Copy, Check } from 'lucide-react';
 import { useApp } from './state';
 import { api } from './api';
+import { useSheet } from './useSheet';
 import { localDate, placeImage } from './utils';
 
 export const categories = {
@@ -102,19 +103,16 @@ export function PlaceCard({ place, onPlan, compact = false }) {
     </div>
   </article>;
 }
-export function Modal({ title, children, onClose }) {
+export function Modal({ title, children, onClose, dismissable = true }) {
   const { translate } = useApp();
   const ref = useRef(null);
   const titleId = useId();
-  useEffect(() => {
-    const dialog = ref.current;
-    const previous = document.activeElement;
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    dialog.showModal();
-    return () => { dialog.close(); document.body.style.overflow = overflow; previous?.focus(); };
-  }, []);
-  return <dialog ref={ref} className="modal" aria-labelledby={titleId} onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => { if (event.target === event.currentTarget) onClose(); }}><div className="modal-content"><div className="modal-heading"><h2 id={titleId}>{translate(title)}</h2><button className="icon-button" onClick={onClose} title={translate('Close')} aria-label={translate('Close dialog')}><X size={22} /></button></div>{children}</div></dialog>;
+  const { settled, dismiss, grabProps } = useSheet(ref, onClose);
+  const requestDismiss = () => { if (dismissable) dismiss(); };
+  return <dialog ref={ref} className="modal" data-settled={String(settled)} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); requestDismiss(); }} onClick={event => { if (event.target === event.currentTarget) requestDismiss(); }}>
+    <div className="sheet-grabber" aria-hidden="true" {...grabProps}><span /></div>
+    <div className="modal-content"><div className="modal-heading"><h2 id={titleId}>{translate(title)}</h2><button className="icon-button" onClick={requestDismiss} title={translate('Close')} aria-label={translate('Close dialog')}><X size={22} /></button></div>{children}</div>
+  </dialog>;
 }
 export function BookingModal({ place, trip = null, onClose }) {
   const { setToast, updateTrips, translate } = useApp();
@@ -135,7 +133,7 @@ export function BookingModal({ place, trip = null, onClose }) {
     } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   }
-  return <Modal title={trip ? 'Edit plan' : 'Plan a visit'} onClose={() => { if (!busy) onClose(); }}>
+  return <Modal title={trip ? 'Edit plan' : 'Plan a visit'} onClose={onClose} dismissable={!busy}>
     <div className="booking-place"><PlaceImage place={place} /><div><strong>{place.name}</strong><p>{place.neighborhood}</p></div></div>
     <form onSubmit={submit} className="form-stack">
       <div className="form-grid"><Label>Start date<input required type="date" name="start_date" min={trip ? undefined : localDate()} value={start} onChange={event => { setStart(event.target.value); if (end < event.target.value) setEnd(event.target.value); }} /></Label><Label>End date<input required type="date" name="end_date" min={start} value={end} onChange={event => setEnd(event.target.value)} /></Label></div>
