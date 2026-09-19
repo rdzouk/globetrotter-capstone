@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import { localDate } from '../src/utils.js';
 
 const destinations = [
@@ -16,7 +17,14 @@ const farePolicies = [
 const MAP_READY = { timeout: 30000 };
 
 async function mockApi(page, authenticated = true) {
-  const state = { favorites: [], trips: [], comments: [], feedback: [], messages: [], calls: [], activity: { reviews: [], comments: [], replies: [] }, profile: { id: 1, name: 'Test Traveler', email: 'traveler@example.test', phone: null, preferences: ['outdoor'] } };
+  const state = { destinations: structuredClone(destinations), photos: [], photoUploads: {}, favorites: [], trips: [], comments: [], feedback: [], messages: [], friends: [], directMessages: {}, audioUploads: {}, calls: [], activity: { reviews: [], comments: [], replies: [] }, profile: { id: 1, name: 'Test Traveler', email: 'traveler@example.test', phone: null, preferences: ['outdoor'] } };
+  async function addPhoto(destinationId, upload, caption = '') {
+    const photo = { id: Math.max(0, ...state.photos.map(entry => entry.id)) + 1, destination_id: destinationId, user_id: state.profile.id, user_name: state.profile.name, caption, created_at: new Date().toISOString() };
+    photo.image_url = `/destinations/${destinationId}/photos/${photo.id}/image`;
+    state.photos.push(photo);
+    state.photoUploads[photo.image_url] = { contentType: upload.type, body: Buffer.from(await upload.arrayBuffer()) };
+    return photo;
+  }
   await page.addInitScript(({ authenticated }) => {
     if (!localStorage.getItem('gt_lang')) localStorage.setItem('gt_lang', 'en');
     if (!localStorage.getItem('gt_theme')) localStorage.setItem('gt_theme', 'light');
@@ -26,10 +34,34 @@ async function mockApi(page, authenticated = true) {
     const request = route.request();
     const path = new URL(request.url()).pathname.replace('/api', '');
     const method = request.method();
-    const body = request.postDataJSON();
+    const contentType = request.headers()['content-type'] || '';
+    const body = contentType.startsWith('multipart/form-data') ? Object.fromEntries(await new Response(request.postDataBuffer(), { headers: { 'Content-Type': contentType } }).formData()) : request.postDataJSON();
     state.calls.push({ path, method, body, authorization: request.headers().authorization });
     const respond = (data, status = 200) => route.fulfill({ status, json: data });
-    if (path === '/destinations') return respond(destinations);
+    if (path === '/destinations') {
+      if (method === 'POST') {
+        const place = { ...JSON.parse(body.details), id: 200 + state.destinations.length, active: true, rating: 0, rating_count: 0, image_url: '', added_by: { id: state.profile.id, name: state.profile.name } };
+        const photo = await addPhoto(place.id, body.photo);
+        place.cover_photo_url = photo.image_url;
+        state.destinations.push(place);
+        return respond(place, 201);
+      }
+      return respond(state.destinations);
+    }
+    if (/^\/destinations\/\d+$/.test(path)) return respond(state.destinations.find(place => place.id === Number(path.split('/')[2])));
+    if (/^\/destinations\/\d+\/photos$/.test(path)) {
+      const destinationId = Number(path.split('/')[2]);
+      if (method === 'POST') return respond(await addPhoto(destinationId, body.photo, body.caption), 201);
+      const photos = state.photos.filter(photo => photo.destination_id === destinationId);
+      return respond({ photos, count: photos.length, next_before: null });
+    }
+    if (/^\/destinations\/\d+\/photos\/\d+\/image$/.test(path)) return state.photoUploads[path] ? route.fulfill(state.photoUploads[path]) : respond({ error: 'Photo unavailable.' }, 404);
+    if (/^\/destinations\/\d+\/photos\/\d+$/.test(path) && method === 'DELETE') {
+      const photoId = Number(path.split('/')[4]);
+      state.photos = state.photos.filter(photo => photo.id !== photoId);
+      delete state.photoUploads[`${path}/image`];
+      return respond({ removed: true });
+    }
     if (path === '/fares') return respond(farePolicies);
     if (path === '/auth/google/config') return respond({ client_id: null });
     if (path === '/auth/google') return respond({ id: 1, token: 'test-session', name: state.profile.name }, 201);
@@ -37,6 +69,45 @@ async function mockApi(page, authenticated = true) {
     if (path === '/register') return respond({ id: 1, name: body.name }, 201);
     if (path === '/profile') { if (method === 'PATCH') Object.assign(state.profile, body); return respond(state.profile); }
     if (path === '/profile/activity') return respond(state.activity);
+    if (path === '/friends') {
+      if (method === 'POST') {
+        const existing = state.friends.find(friend => friend.user_id === body.user_id);
+        if (existing) return respond(existing);
+        const friend = { id: Math.max(0, ...state.friends.map(friend => friend.id)) + 1, user_id: body.user_id, name: state.comments.find(comment => comment.user_id === body.user_id)?.user_name || 'Camille', status: 'outgoing' };
+        state.friends.push(friend);
+        return respond(friend, 201);
+      }
+      return respond(state.friends);
+    }
+    if (/^\/friends\/\d+$/.test(path)) {
+      const friend = state.friends.find(friend => friend.id === Number(path.split('/')[2]));
+      if (method === 'DELETE') { state.friends = state.friends.filter(entry => entry !== friend); return respond({ removed: true }); }
+      friend.status = 'accepted';
+      return respond(friend);
+    }
+    if (/^\/friends\/\d+\/messages$/.test(path)) {
+      const friendshipId = Number(path.split('/')[2]);
+      const messages = state.directMessages[friendshipId] ||= [];
+      if (method === 'POST') {
+        const existing = messages.find(message => message.client_id === body.client_id);
+        if (existing) return respond(existing);
+        const message = { id: messages.length + 1, user_id: state.profile.id, user_name: state.profile.name, message: body.message || '', client_id: body.client_id, created_at: new Date().toISOString(), deleted: false };
+        if (body.audio) {
+          message.audio_url = `${path}/${message.id}/audio`;
+          message.duration = 1;
+          state.audioUploads[message.audio_url] = { contentType: body.audio.type, body: Buffer.from(await body.audio.arrayBuffer()) };
+        }
+        messages.push(message);
+        return respond(message, 201);
+      }
+      return respond({ messages, has_more: false });
+    }
+    if (/^\/friends\/\d+\/messages\/\d+\/audio$/.test(path)) return route.fulfill(state.audioUploads[path]);
+    if (/^\/friends\/\d+\/messages\/\d+$/.test(path) && method === 'DELETE') {
+      const message = state.directMessages[Number(path.split('/')[2])].find(entry => entry.id === Number(path.split('/')[4]));
+      Object.assign(message, { deleted: true, message: '', audio_url: null });
+      return respond(message);
+    }
     if (path === '/chat/messages') {
       if (method === 'POST') {
         const message = { id: Math.max(0, ...state.messages.map(item => item.id)) + 1, user_id: state.profile.id, user_name: state.profile.name, message: body.message, client_id: body.client_id, created_at: new Date().toISOString(), deleted: false, reply_to: state.messages.find(item => item.id === body.reply_to_id) || null };
@@ -51,10 +122,10 @@ async function mockApi(page, authenticated = true) {
       Object.assign(message, { deleted: true, message: '' });
       return respond(message);
     }
-    if (path === '/recommendations') return respond(destinations);
+    if (path === '/recommendations') return respond(state.destinations);
     if (path === '/favorites') {
       if (method === 'POST') state.favorites.push(body.destination_id);
-      return respond(destinations.filter(place => state.favorites.includes(place.id)), method === 'POST' ? 201 : 200);
+      return respond(state.destinations.filter(place => state.favorites.includes(place.id)), method === 'POST' ? 201 : 200);
     }
     if (/^\/favorites\/\d+$/.test(path)) { state.favorites = state.favorites.filter(id => id !== Number(path.split('/').pop())); return respond({ removed: true }); }
     if (path === '/itineraries') {
@@ -701,6 +772,33 @@ test('Google sign-up uses configured identity service and preserves return desti
   await expect(page).toHaveURL(/\/$/);
   expect(state.calls.find(call => call.path === '/auth/google').body).toEqual({ credential: 'test-google-credential' });
   expect(await page.evaluate(() => window.googleTestOptions.nonce)).toBe('test-nonce');
+  expect(await page.evaluate(() => window.googleTestOptions.use_fedcm_for_button)).toBe(true);
+  expect(await page.evaluate(() => window.googleTestOptions.auto_select)).toBe(false);
+});
+
+test('Google login retries verification and returns to the requested friend conversation', async ({ page }) => {
+  const state = await mockApi(page, false);
+  state.friends.push({ id: 1, user_id: 2, name: 'Camille', status: 'accepted' });
+  let attempts = 0;
+  let nonceVersion = 0;
+  await page.route('**/api/auth/google/config', route => route.fulfill({ json: { client_id: 'test-client.apps.googleusercontent.com', nonce: `test-nonce-${++nonceVersion}` } }));
+  await page.route('**/api/auth/google', route => {
+    attempts += 1;
+    return attempts === 1 ? route.fulfill({ status: 400, json: { error: 'Google sign-in verification failed. Please try again.' } }) : route.fulfill({ json: { token: 'test-session', name: state.profile.name, id: state.profile.id } });
+  });
+  await page.route('https://accounts.google.com/gsi/client', route => route.fulfill({ contentType: 'application/javascript', body: `window.google = { accounts: { id: { initialize(options) { window.googleTestOptions = options; }, renderButton(container) { const button = document.createElement('button'); button.textContent = 'Continue with Google'; button.onclick = () => { window.googleTestOptions.callback({ credential: 'test-google-credential' }); window.googleTestOptions.callback({ credential: 'duplicate-google-credential' }); }; container.appendChild(button); } } } };` }));
+  await page.goto('/chat?view=friends&friend=1');
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole('button', { name: 'Continue with Google', exact: true })).toBeEnabled();
+  const initialNonce = await page.evaluate(() => window.googleTestOptions.nonce);
+  await page.getByRole('button', { name: 'Continue with Google', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Google sign-in verification failed.');
+  await expect.poll(() => page.evaluate(() => window.googleTestOptions.nonce)).not.toBe(initialNonce);
+  expect(attempts).toBe(1);
+  await page.getByRole('button', { name: 'Continue with Google', exact: true }).click();
+  await expect(page).toHaveURL(/\/chat\?view=friends&friend=1$/);
+  await expect(page.getByRole('heading', { name: 'Camille', exact: true })).toBeVisible();
+  expect(attempts).toBe(2);
 });
 
 test('community chat sends, replies, and deletes only the current user message', async ({ page }, testInfo) => {
@@ -719,7 +817,7 @@ test('community chat sends, replies, and deletes only the current user message',
   await page.getByRole('dialog').getByRole('button', { name: 'Delete message', exact: true }).click();
   await expect(page.locator('.own-message')).toContainText('Message deleted.');
   await selectLanguage(page, 'fr');
-  await expect(page.getByRole('heading', { name: 'La ville en conversation' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Messages', exact: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: '\u00c9crire \u00e0 la communaut\u00e9' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   const composerFits = await page.evaluate(() => {
@@ -729,6 +827,136 @@ test('community chat sends, replies, and deletes only the current user message',
   });
   expect(composerFits).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('chat-french.png'), fullPage: true });
+});
+
+test('friends from place comments support requests, private text and voice notes', async ({ page, context }, testInfo) => {
+  const state = await mockApi(page);
+  state.comments.push({ id: 1, user_id: 2, user_name: 'Camille', message: 'Lovely garden.', created_at: '2026-09-19T10:00:00Z', replies: [] });
+  state.friends.push({ id: 1, user_id: 3, name: 'Nadia', status: 'incoming' });
+  await context.grantPermissions(['microphone']);
+  await page.addInitScript(() => {
+    const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    window.testMicrophoneTracks = [];
+    navigator.mediaDevices.getUserMedia = async constraints => {
+      const stream = await original(constraints);
+      window.testMicrophoneTracks.push(...stream.getTracks());
+      return stream;
+    };
+  });
+  await page.goto('/places/1?tab=comments');
+  await page.getByRole('button', { name: 'Add Camille as a friend', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Request sent to Camille' })).toBeDisabled();
+  await page.goto('/chat?view=friends');
+  await page.getByRole('button', { name: 'Accept Nadia', exact: true }).click();
+  await page.locator('.friend-row').filter({ hasText: 'Nadia' }).click();
+  await expect(page.getByRole('region', { name: 'Private conversation' })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Message your friend', exact: true }).fill('Meet at Tassa?');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(page.locator('.chat-message')).toContainText('Meet at Tassa?');
+  await page.getByRole('button', { name: 'Record voice note', exact: true }).click();
+  await expect(page.locator('.recording-controls')).toContainText('0:01');
+  await page.getByRole('button', { name: 'Stop recording', exact: true }).click();
+  await expect(page.getByLabel('Voice note preview')).toHaveAttribute('src', /^blob:/);
+  await page.screenshot({ path: testInfo.outputPath('voice-preview.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Send voice note', exact: true }).click();
+  await page.getByRole('button', { name: /Play voice note/ }).click();
+  await expect(page.getByLabel('Voice note', { exact: true })).toHaveAttribute('src', /^blob:/);
+  const upload = state.calls.find(call => call.body?.audio);
+  expect(upload.authorization).toBe('Bearer test-session');
+  expect(upload.body.audio.size).toBeGreaterThan(0);
+  expect(state.messages).toHaveLength(0);
+  expect(state.directMessages[1]).toHaveLength(2);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  const chatLayout = await page.evaluate(() => {
+    const navigation = document.querySelector('.bottom-nav');
+    return {
+      feedHeight: document.querySelector('.chat-feed').clientHeight,
+      sendBottom: document.querySelector('.chat-compose-actions button').getBoundingClientRect().bottom,
+      availableBottom: navigation?.getClientRects().length ? navigation.getBoundingClientRect().top : window.innerHeight,
+    };
+  });
+  expect(chatLayout.feedHeight).toBeGreaterThanOrEqual(120);
+  expect(chatLayout.sendBottom).toBeLessThanOrEqual(chatLayout.availableBottom);
+  await page.screenshot({ path: testInfo.outputPath('private-chat.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Record voice note', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop recording', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back to friends', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.testMicrophoneTracks.every(track => track.readyState === 'ended'))).toBe(true);
+  await page.locator('.friend-row').filter({ hasText: 'Nadia' }).click();
+  await page.evaluate(() => { navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('Denied', 'NotAllowedError'); }; });
+  await page.getByRole('button', { name: 'Record voice note', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Microphone permission was denied.');
+});
+
+test('community places select map locations and show attributed user photo galleries', async ({ page }, testInfo) => {
+  const state = await mockApi(page);
+  const photoFile = { name: 'terrace.jpg', mimeType: 'image/jpeg', buffer: readFileSync(new URL('../../static/images/places/99.jpg', import.meta.url)) };
+  await page.route('https://basemaps.cartocdn.com/gl/**/style.json', route => route.fulfill({ json: { version: 8, sources: {}, layers: [{ id: 'test-background', type: 'background', paint: { 'background-color': '#dfece5' } }] } }));
+  await page.goto('/');
+  await page.getByRole('link', { name: 'Add a place', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Place name', exact: true }).fill('Community garden');
+  await page.getByRole('combobox', { name: 'Category', exact: true }).selectOption('nature');
+  await page.getByLabel('Neighborhood', { exact: true }).fill('Bastos');
+  await page.getByRole('textbox', { name: 'Address', exact: true }).fill('Bastos, Yaounde');
+  await page.getByRole('textbox', { name: 'Description', exact: true }).fill('A garden contributed by a traveler.');
+  await expect(page.locator('.place-location-picker')).toHaveAttribute('data-map-ready', 'true', MAP_READY);
+  await expect(page.getByRole('spinbutton', { name: 'Latitude', exact: true })).toHaveValue('');
+  const canvas = page.locator('.location-picker-canvas canvas');
+  const bounds = await canvas.boundingBox();
+  await canvas.click({ position: { x: bounds.width * 0.4, y: bounds.height * 0.5 } });
+  await expect(page.getByRole('spinbutton', { name: 'Latitude', exact: true })).not.toHaveValue('');
+  const originalLatitude = await page.getByRole('spinbutton', { name: 'Latitude', exact: true }).inputValue();
+  const marker = await page.getByRole('img', { name: 'Selected place location' }).boundingBox();
+  await page.mouse.move(marker.x + marker.width / 2, marker.y + marker.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(marker.x + marker.width / 2 + 25, marker.y + marker.height / 2 + 35, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByRole('spinbutton', { name: 'Latitude', exact: true })).not.toHaveValue(originalLatitude);
+  const selectedCoordinates = { lat: Number(await page.getByRole('spinbutton', { name: 'Latitude', exact: true }).inputValue()), lng: Number(await page.getByRole('spinbutton', { name: 'Longitude', exact: true }).inputValue()) };
+  const pixels = await canvas.evaluate(element => {
+    const context = element.getContext('webgl2');
+    const pixel = new Uint8Array(4);
+    context.readPixels(Math.floor(element.width / 2), Math.floor(element.height / 2), 1, 1, context.RGBA, context.UNSIGNED_BYTE, pixel);
+    return [...pixel];
+  });
+  expect(pixels[3]).toBe(255);
+  expect(pixels.slice(0, 3).some(channel => channel > 0)).toBe(true);
+  await page.getByLabel('Place photo', { exact: true }).setInputFiles(photoFile);
+  await expect(page.getByRole('img', { name: 'Selected photo preview' })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('add-place.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Add place', exact: true }).click();
+  await expect(page).toHaveURL(/\/places\/202$/);
+  await expect(page.locator('.detail-heading')).toContainText('Added by Test Traveler');
+  await expect.poll(() => page.locator('.detail-photo > img').evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
+  const submission = state.calls.find(call => call.path === '/destinations' && call.method === 'POST');
+  expect(submission.authorization).toBe('Bearer test-session');
+  expect(JSON.parse(submission.body.details)).toMatchObject(selectedCoordinates);
+  await page.getByRole('button', { name: 'More photos', exact: true }).click();
+  await expect(page.locator('.community-photo')).toContainText('Photo by Test Traveler');
+  await page.screenshot({ path: testInfo.outputPath('community-place.png'), fullPage: true });
+  await page.goto('/places/1');
+  await page.getByRole('button', { name: 'More photos', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'No community photos yet.' })).toBeVisible();
+  await page.getByLabel('Place photo', { exact: true }).setInputFiles(photoFile);
+  await page.getByRole('textbox', { name: 'Photo caption', exact: true }).fill('The terrace in the afternoon');
+  await page.getByRole('button', { name: 'Add photo', exact: true }).click();
+  await expect(page.locator('.community-photo')).toContainText('The terrace in the afternoon');
+  state.photos.push({ id: 99, destination_id: 1, user_id: 2, user_name: 'Camille', caption: 'A visitor view', image_url: '/destinations/1/photos/99/image', created_at: new Date().toISOString() });
+  state.photoUploads['/destinations/1/photos/99/image'] = { contentType: 'image/jpeg', body: photoFile.buffer };
+  await page.reload();
+  await expect(page.locator('.community-photo')).toHaveCount(2);
+  await expect(page.locator('.community-photo').filter({ hasText: 'Photo by Camille' }).getByRole('button', { name: 'Delete photo' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'View photo by Camille' }).click();
+  await expect(page.getByRole('dialog').getByRole('img', { name: 'A visitor view', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close dialog' }).click();
+  await page.getByRole('button', { name: 'Delete photo', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete photo', exact: true }).click();
+  await expect(page.locator('.community-photo')).toHaveCount(1);
+  await selectLanguage(page, 'fr');
+  await expect(page.getByRole('heading', { name: 'Photos des membres', exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 780 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('community-gallery-fr-320.png'), fullPage: true });
 });
 
 test('profile activity shows review authors and replies under the original comment', async ({ page }, testInfo) => {

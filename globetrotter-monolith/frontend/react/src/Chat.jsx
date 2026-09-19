@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowUpRight, Hash, MessageCircle, RefreshCw, Reply, Send, Trash2, X } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, ArrowUpRight, Hash, MessageCircle, RefreshCw, Reply, Send, Trash2, Users, X } from 'lucide-react';
 import { api } from './api';
 import { Empty, ErrorMessage, Label, Loading, Modal, PageHeading } from './components';
-import { useApp, useResource } from './state';
+import { useApp } from './state';
+import { FriendButton, FriendDirectory } from './Friends';
+import { VoicePlayback, VoiceRecorder } from './VoiceNote';
 
 function mergeMessages(current, incoming) {
   const byId = new Map(current.map(message => [message.id, message]));
@@ -15,8 +17,28 @@ function mergeMessages(current, incoming) {
 }
 
 export default function Chat() {
-  const { translate, date, number, setToast } = useApp();
-  const profile = useResource('/profile');
+  const { friends, translate } = useApp();
+  const [params, setParams] = useSearchParams();
+  const view = params.get('view') === 'friends' || params.has('friend') ? 'friends' : 'community';
+  const selectedId = Number(params.get('friend'));
+  const friend = (friends.data || []).find(entry => entry.id === selectedId && entry.status === 'accepted');
+  useEffect(() => {
+    const timer = setInterval(() => { if (!document.hidden) friends.reload(); }, 10000);
+    return () => clearInterval(timer);
+  }, [friends.reload]);
+  function selectFriend(friendId) { setParams(friendId ? { view: 'friends', friend: String(friendId) } : { view: 'friends' }); }
+  return <>
+    <PageHeading eyebrow="COMMUNITY" title="Messages"><Link className="button secondary" to="/profile">{translate('My activity')}<ArrowUpRight size={16} /></Link></PageHeading>
+    <div className="chat-hub">
+      <div className="segmented chat-tabs" role="group" aria-label={translate('Chat sections')}><button className={view === 'community' ? 'active' : ''} aria-pressed={view === 'community'} onClick={() => setParams({ view: 'community' })}><Hash size={17} />{translate('Community chat')}</button><button className={view === 'friends' ? 'active' : ''} aria-pressed={view === 'friends'} onClick={() => setParams({ view: 'friends' })}><Users size={17} />{translate('Friends')}</button></div>
+      {view === 'community' ? <Conversation key="community" /> : <div className={`social-layout ${friend ? 'has-conversation' : ''}`}><FriendDirectory selectedId={selectedId} onSelect={selectFriend} onRemoved={friendId => { if (friendId === selectedId) selectFriend(null); }} />{friend ? <Conversation key={friend.id} friend={friend} onBack={() => selectFriend(null)} /> : <div className="social-empty"><Empty title="Choose a friend" message="" /></div>}</div>}
+    </div>
+  </>;
+}
+
+function Conversation({ friend = null, onBack }) {
+  const { translate, date, number, setToast, currentUser: profile } = useApp();
+  const messagePath = friend ? `/friends/${friend.id}/messages` : '/chat/messages';
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -44,7 +66,7 @@ export default function Chat() {
       if (!active) return;
       try {
         if (!document.hidden) {
-          const result = await api('/chat/messages?limit=100', { signal: controller.signal });
+          const result = await api(`${messagePath}?limit=100`, { signal: controller.signal });
           if (!active) return;
           setMessages(current => mergeMessages(current, result.messages));
           if (!initialized.current) { setHasMore(result.has_more); initialized.current = true; }
@@ -60,7 +82,7 @@ export default function Chat() {
     }
     update();
     return () => { active = false; clearTimeout(timer); controller.abort(); };
-  }, [revision]);
+  }, [revision, messagePath]);
 
   useLayoutEffect(() => {
     if (!feed.current) return;
@@ -74,7 +96,7 @@ export default function Chat() {
     if (!messages.length || olderBusy) return;
     setOlderBusy(true);
     try {
-      const result = await api(`/chat/messages?before_id=${messages[0].id}&limit=50`);
+      const result = await api(`${messagePath}?before_id=${messages[0].id}&limit=50`);
       previousHeight.current = feed.current?.scrollHeight ?? null;
       setMessages(current => mergeMessages(current, result.messages));
       setHasMore(result.has_more);
@@ -93,7 +115,7 @@ export default function Chat() {
     setSending(true);
     setSendError('');
     try {
-      const saved = await api('/chat/messages', { method: 'POST', body: pending.current });
+      const saved = await api(messagePath, { method: 'POST', body: pending.current });
       followLatest.current = true;
       setMessages(current => mergeMessages(current, [saved]));
       pending.current = null;
@@ -104,10 +126,26 @@ export default function Chat() {
     finally { setSending(false); }
   }
 
+  async function sendVoice(recording, clientId) {
+    if (sending || !recording) return false;
+    setSending(true);
+    setSendError('');
+    const body = new FormData();
+    body.append('client_id', clientId);
+    body.append('audio', recording, 'voice-note');
+    try {
+      const saved = await api(messagePath, { method: 'POST', body });
+      followLatest.current = true;
+      setMessages(current => mergeMessages(current, [saved]));
+      return true;
+    } catch (failure) { setSendError(failure.message); return false; }
+    finally { setSending(false); }
+  }
+
   async function remove() {
     setDeleteBusy(true);
     try {
-      const removed = await api(`/chat/messages/${deleting.id}`, { method: 'DELETE' });
+      const removed = await api(`${messagePath}/${deleting.id}`, { method: 'DELETE' });
       setMessages(current => mergeMessages(current.map(message => message.reply_to?.id === removed.id ? { ...message, reply_to: { ...message.reply_to, message: '', deleted: true } } : message), [removed]));
       if (reply?.id === removed.id) setReply(null);
       setDeleting(null);
@@ -117,9 +155,8 @@ export default function Chat() {
   }
 
   return <>
-    <PageHeading eyebrow="COMMUNITY" title="The city, in conversation"><Link className="button secondary" to="/profile">{translate('My activity')}<ArrowUpRight size={16} /></Link></PageHeading>
-    <section className="chat-room" aria-label={translate('Community chat')}>
-      <header className="chat-room-heading"><div><Hash size={21} /><h2>{translate('General')}</h2></div><button className="icon-button" title={translate('Refresh messages')} aria-label={translate('Refresh messages')} onClick={refresh}><RefreshCw size={18} /></button></header>
+    <section className="chat-room" aria-label={translate(friend ? 'Private conversation' : 'Community chat')}>
+      <header className="chat-room-heading"><div>{friend ? <button type="button" className="icon-button chat-back" title={translate('Back to friends')} aria-label={translate('Back to friends')} onClick={onBack}><ArrowLeft size={19} /></button> : <Hash size={21} />}<h2>{friend ? friend.name : translate('General')}</h2></div><button className="icon-button" title={translate('Refresh messages')} aria-label={translate('Refresh messages')} onClick={refresh}><RefreshCw size={18} /></button></header>
       <ErrorMessage>{error}</ErrorMessage>
       <div ref={feed} className="chat-feed" role="region" aria-label={translate('Latest messages')} onScroll={() => { const node = feed.current; followLatest.current = node.scrollHeight - node.scrollTop - node.clientHeight < 100; }}>
         {hasMore && <button className="text-button chat-load" disabled={olderBusy} onClick={loadOlder}>{translate(olderBusy ? 'Loading...' : 'Load earlier messages')}</button>}
@@ -128,14 +165,16 @@ export default function Chat() {
           <div className="chat-message-content"><div className="chat-message-meta"><strong>{message.user_name || translate('Traveler')}</strong><time dateTime={message.created_at}>{date(message.created_at, { hour: '2-digit', minute: '2-digit' })}</time></div>
             {message.reply_to && <blockquote><strong>{translate('Replying to {name}', { name: message.reply_to.user_name || translate('Traveler') })}</strong><p>{message.reply_to.deleted ? translate('Message deleted.') : message.reply_to.message}</p></blockquote>}
             <p className={message.deleted ? 'deleted-message' : ''}>{message.deleted ? translate('Message deleted.') : message.message}</p>
-            {!message.deleted && <div className="chat-message-actions"><button className="text-button" onClick={() => { setReply(message); composer.current?.focus(); }}><Reply size={14} />{translate('Reply')}</button>{message.user_id === profile.data?.id && <button className="icon-button" title={translate('Delete message')} aria-label={translate('Delete message')} onClick={() => setDeleting(message)}><Trash2 size={15} /></button>}</div>}
+            {!message.deleted && message.audio_url && <VoicePlayback path={message.audio_url} duration={message.duration} />}
+            {!message.deleted && <div className="chat-message-actions">{!friend && <><button className="text-button" onClick={() => { setReply(message); composer.current?.focus(); }}><Reply size={14} />{translate('Reply')}</button><FriendButton userId={message.user_id} name={message.user_name} /></>}{message.user_id === profile.data?.id && <button className="icon-button" title={translate('Delete message')} aria-label={translate('Delete message')} onClick={() => setDeleting(message)}><Trash2 size={15} /></button>}</div>}
           </div>
         </article>)}
       </div>
       <form className="chat-composer" onSubmit={send}>
         {reply && <div className="chat-reply-target"><MessageCircle size={17} /><span>{translate('Replying to {name}', { name: reply.user_name })}</span><button type="button" className="icon-button" title={translate('Cancel reply')} aria-label={translate('Cancel reply')} onClick={() => setReply(null)}><X size={17} /></button></div>}
         <ErrorMessage>{sendError}</ErrorMessage>
-        <Label>Message the community<textarea ref={composer} value={draft} onChange={event => setDraft(event.target.value)} placeholder={translate('Write a message...')} rows={2} maxLength={2000} required disabled={sending} /></Label>
+        <Label>{translate(friend ? 'Message your friend' : 'Message the community')}<textarea ref={composer} value={draft} onChange={event => setDraft(event.target.value)} placeholder={translate('Write a message...')} rows={2} maxLength={2000} required disabled={sending} /></Label>
+        {friend && <VoiceRecorder onSend={sendVoice} disabled={sending} />}
         <div className="chat-compose-actions"><span>{number(draft.length)} / {number(2000)}</span><button className="button" disabled={sending || !draft.trim()}><Send size={17} />{translate(sending ? 'Sending...' : 'Send message')}</button></div>
       </form>
     </section>

@@ -56,7 +56,9 @@ For a deployment outside Docker, serve `dist/`, configure a fallback to `index.h
 - `react/src/Recovery.jsx`: email/SMS recovery requests and single-use password reset.
 - `react/src/Admin.jsx`: protected catalogue, fare policy and audit management.
 - `react/src/GoogleSignIn.jsx`: Google Identity Services button and verified backend sign-in.
-- `react/src/Chat.jsx`: authenticated community chat, replies, earlier messages, and owned deletion.
+- `react/src/Chat.jsx`, `Friends.jsx`, and `VoiceNote.jsx`: community chat, friend requests, private text/voice conversations, recording preview and authenticated playback.
+- `react/src/CommunityPlaces.jsx`: user-submitted places, map location selection and community photo galleries.
+- `react/src/Media.jsx`: authenticated media loading with abort and object-URL cleanup.
 - `react/src/ProfileActivity.jsx`: your reviews, comments, and replies received.
 - `react/src/i18n.js`, `translations.js`, and `contentTranslations.js`: interface, locale formatting, and destination translations.
 - `react/src/MapView.jsx`: lazy-loaded map, live location, and OSRM directions.
@@ -99,9 +101,17 @@ The additive `20260911_recovery` migration creates `account_security`, `password
 
 Unvisited plans can be edited from My trips or the weekly planner using the existing visit form. Dates, time slot, transport and notes are validated by the API; only the owner may edit or cancel. Cancellation needs confirmation and deletes an unvisited plan, not a venue reservation. Completed visits/reviews cannot be edited or cancelled through these endpoints. Archived destinations stay attached to existing plans so history remains readable.
 
-## Google Sign-up
+## Google Sign-in and Sign-up
 
-Create an OAuth client of type **Web application** in Google Cloud / Google Auth Platform. Add the exact JavaScript origins used by this app, such as `http://localhost:5173`, `http://127.0.0.1:5173`, and your production HTTPS origin. Configure the consent screen and test users as required by Google.
+This app uses [Google Identity Services](https://developers.google.com/identity/gsi/web/guides/overview), not an API key or the retired Google Sign-In library. Both login and registration use Google's official button. FedCM is enabled without automatic account selection, and Nginx/Vite allow Google's fallback popup flow.
+
+1. Open [Google Auth Platform clients](https://console.cloud.google.com/auth/clients), choose your project, and create an OAuth client of type **Web application**.
+2. Add the exact **Authorized JavaScript origins**: `http://localhost`, `http://localhost:5173`, `http://127.0.0.1:5173`, and your deployed HTTPS origin. If the Vite port changes, authorize that port too. Do not include URL paths.
+3. Complete Branding and Audience settings, and add test accounts while the app is in testing. Basic sign-in uses only identity/profile information; no Maps, Gmail, Drive or paid API key is needed.
+4. Set the public client ID as `GOOGLE_CLIENT_ID` in the private backend `.env` (local) or monolith `.env` (Compose), then restart the backend. Never use a client secret as this value.
+5. Open `/login` at an authorized origin, choose **Sign in with Google**, and complete consent yourself. Sign out and sign back in to confirm the same app account returns. An unconfigured client deliberately leaves the button disabled.
+
+The JavaScript callback posts the credential to `/api/auth/google`, so an OAuth redirect URL is not needed for this flow. Keep the API on the same origin to preserve the signed nonce cookie. See Google's [setup guide](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid) and [server verification guide](https://developers.google.com/identity/gsi/web/guides/verify-google-id-token).
 
 Set `GOOGLE_CLIENT_ID=<your-public-client-id>.apps.googleusercontent.com` in `backend/.env` for local development, or `globetrotter-monolith/.env` for Docker Compose, then restart/rebuild the backend. No Google client secret belongs in React and none is required for this ID-token flow. The public ID is served by `/api/auth/google/config`; keep the API on the same origin using the existing proxy so the secure nonce cookie is sent.
 
@@ -109,7 +119,25 @@ Google verifies identity before the backend creates a session. The server valida
 
 ## Community and Activity
 
-`/chat` is one shared, authenticated community room backed by SQL. It polls the latest messages every five seconds while the tab is visible, supports earlier-message pagination, quoted replies, retry-safe sending, and deletion of your own messages. Messages are limited to 2,000 characters and 20 sends per minute. Names and timestamps come from the server. Deletion retains a tombstone so reply threads remain understandable. This is a general room, not private messaging or a moderated messaging platform.
+`/chat` has **Community chat** and **Friends** views. Community chat retains its shared room, quoted replies, earlier-message pagination and owned deletion. **Add friend** appears beside other travelers' place comments and community messages. Requests can be accepted, declined or cancelled; only accepted friends can open a private conversation. The friends view lists accepted friends and pending requests and supports name filtering. No email addresses, phone numbers or user directory are exposed.
+
+Private conversations support text and voice notes. Recording starts only after a user action and browser microphone permission, requires HTTPS or localhost, stops automatically before two minutes, and stops when leaving the conversation. Users can preview, discard or send a recording. Playback fetches audio with the bearer token, never with a token in the URL. A participant may delete their own messages. Removing a friend requires confirmation and deletes that friendship and its private conversation for both people; a fresh request requires acceptance again.
+
+Messages are limited to 2,000 characters. Private sends are capped at 20/minute and 200/day per account. Audio is capped at 5 MB and two minutes, decoded by PyAV on the server, and must be an audio-only WebM, Ogg, MP4 or WAV file. Names and timestamps come from the server, and client UUIDs make retries idempotent. Conversations poll every five seconds while visible; friend lists refresh every ten seconds on the chat page. Messages are access-controlled but are not end-to-end encrypted. Blocking, reporting, moderation queues and push notifications are not included.
+
+## Community Places and Photos
+
+**Add a place** on Explore or the map opens `/places/new`. A submission requires a name, category, neighborhood, address, description, photo and valid coordinates. Users can click the map, drag its marker, enter coordinates, or explicitly request their current position. Phone, price level and tags are optional. Community entries are published with zero ratings and clearly labeled **Community place / Added by {name}**; attribution comes from the signed-in account, never the form. Existing administrator archive controls still apply.
+
+**More photos** on every place opens the community gallery. Any signed-in user can add a photo and optional caption to an active place; each image displays its contributor. Galleries are paginated and have a full-image viewer. Only the uploader or an administrator can delete a photo. Deleting a community place's cover selects another available photo or displays the existing missing-image fallback; the place and its history remain intact.
+
+Photos must be JPEG, PNG or WebP, at most 8 MB and 20 megapixels. Pillow decodes and resizes them to at most 1920 pixels, re-encodes JPEG, and drops metadata including location EXIF. SVG, animated and invalid images are rejected. Submissions are limited to 5 places/hour (15/day) and 20 photos/hour (100/day) per account. User text stays in its original language; UI labels are English/French.
+
+Install the updated backend requirements and back up before `alembic upgrade head`. The additive `20260919_social_places` migration adds friendships, direct messages, destination contributions and photos without rewriting accounts, destinations, community messages or plans. Media is stored in database binary columns and covered by database backups; no ephemeral container upload folder or new public media directory is used. Plan for database growth and protect backups as they include private messages and recordings. This is appropriate for the current monolith; a high-volume deployment should move media behind authenticated object storage with a retention policy.
+
+Flask and Nginx cap requests at 9 MB including multipart overhead. Authenticated photo/audio responses use `no-store` and remain excluded from the service worker. Tests use isolated databases, mocked APIs and a synthetic microphone, not user accounts or real microphone input. Live Google consent, physical-device microphone quality and third-party map availability still require checks in the target environment.
+
+## Profile Activity
 
 The profile activity section lists up to 50 recent reviews, comments, and replies to your comments, with authors and links to the exact conversation. Destination comments show the author's visit review when present.
 

@@ -35,6 +35,8 @@ export function AppProvider({ children }) {
   const [tripVersion, updateTrips] = useReducer(value => value + 1, 0);
   const places = useResource(session.verified ? '/destinations' : null);
   const favorites = useResource(session.verified ? '/favorites' : null);
+  const friends = useResource(session.verified ? '/friends' : null);
+  const currentUser = useResource(session.verified ? '/profile' : null);
   const favoriteIds = new Set((favorites.data || []).map(place => place.id));
   const [savingFavorites, setSavingFavorites] = useState(new Set());
 
@@ -116,7 +118,7 @@ export function AppProvider({ children }) {
       setSavingFavorites(current => new Set([...current].filter(id => id !== place.id)));
     }
   }
-  return <AppContext.Provider value={{ session, sessionError, retrySession, signIn, signOut, updateName, places, favorites, favoriteIds, savingFavorites, toggleFavorite, toast, setToast, tripVersion, updateTrips, language, setLanguage, theme, themePreference, setTheme, translate, number, date, locale }}>{children}</AppContext.Provider>;
+  return <AppContext.Provider value={{ session, sessionError, retrySession, signIn, signOut, updateName, places, favorites, friends, currentUser, favoriteIds, savingFavorites, toggleFavorite, toast, setToast, tripVersion, updateTrips, language, setLanguage, theme, themePreference, setTheme, translate, number, date, locale }}>{children}</AppContext.Provider>;
 }
 
 export function useApp() { return useContext(AppContext); }

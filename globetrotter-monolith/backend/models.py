@@ -12,7 +12,7 @@ import datetime
 
 from sqlalchemy import (
     String, Integer, Float, Boolean, Text, ForeignKey, DateTime,
-    UniqueConstraint, Index, JSON,
+    UniqueConstraint, Index, JSON, CheckConstraint, LargeBinary,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -90,6 +90,7 @@ class Destination(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     image_url: Mapped[str] = mapped_column(String(500), default="")
     publication: Mapped["DestinationPublication | None"] = relationship(back_populates="destination", uselist=False, lazy="joined", cascade="all, delete-orphan")
+    contribution: Mapped["DestinationContribution | None"] = relationship(back_populates="destination", uselist=False, lazy="joined", cascade="all, delete-orphan")
 
     itineraries: Mapped[list["Itinerary"]] = relationship(back_populates="destination")
     favorites: Mapped[list["Favorite"]] = relationship(back_populates="destination")
@@ -110,6 +111,35 @@ class DestinationPublication(Base):
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     destination: Mapped["Destination"] = relationship(back_populates="publication")
+
+
+class DestinationPhoto(Base):
+    __tablename__ = "destination_photos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    destination_id: Mapped[int] = mapped_column(ForeignKey("destinations.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    client_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    caption: Mapped[str] = mapped_column(String(300), default="", nullable=False)
+    image: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, deferred=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    user: Mapped["User | None"] = relationship(lazy="joined")
+
+    __table_args__ = (UniqueConstraint("destination_id", "user_id", "client_id", name="uq_destination_photo_client"),)
+
+
+class DestinationContribution(Base):
+    __tablename__ = "destination_contributions"
+
+    destination_id: Mapped[int] = mapped_column(ForeignKey("destinations.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    client_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    cover_photo_id: Mapped[int | None] = mapped_column(ForeignKey("destination_photos.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    user: Mapped["User | None"] = relationship(lazy="joined")
+    destination: Mapped["Destination"] = relationship(back_populates="contribution")
+
+    __table_args__ = (UniqueConstraint("user_id", "client_id", name="uq_destination_contribution_client"),)
 
 
 class Comment(Base):
@@ -235,3 +265,44 @@ class ChatMessage(Base):
     reply_to: Mapped["ChatMessage | None"] = relationship(remote_side="ChatMessage.id")
 
     __table_args__ = (UniqueConstraint("user_id", "client_id", name="uq_chat_user_client"),)
+
+
+class Friendship(Base):
+    __tablename__ = "friendships"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lower_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    higher_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    requested_by: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    accepted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    lower_user: Mapped["User"] = relationship(foreign_keys=[lower_user_id], lazy="joined")
+    higher_user: Mapped["User"] = relationship(foreign_keys=[higher_user_id], lazy="joined")
+    messages: Mapped[list["DirectMessage"]] = relationship(cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("lower_user_id", "higher_user_id", name="uq_friendship_pair"),
+        CheckConstraint("lower_user_id < higher_user_id", name="ck_friendship_order"),
+        CheckConstraint("requested_by IN (lower_user_id, higher_user_id)", name="ck_friendship_requester"),
+    )
+
+
+class DirectMessage(Base):
+    __tablename__ = "direct_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    friendship_id: Mapped[int] = mapped_column(ForeignKey("friendships.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    client_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    message: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    audio: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
+    audio_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    duration: Mapped[float | None] = mapped_column(Float, nullable=True)
+    deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    user: Mapped["User"] = relationship(lazy="joined")
+
+    __table_args__ = (
+        UniqueConstraint("friendship_id", "user_id", "client_id", name="uq_direct_message_client"),
+        Index("ix_direct_messages_conversation", "friendship_id", "id"),
+    )

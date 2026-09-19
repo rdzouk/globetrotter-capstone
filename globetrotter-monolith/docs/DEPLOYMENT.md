@@ -123,6 +123,18 @@ The deploy sequence above (pull → build → migrate → health-checked restart
 - **Docker image rollback**: images aren't currently tagged/pushed to a registry in this setup (they're built locally on the VPS from source) — rolling back the code via git and rebuilding is the rollback mechanism.
 - **Config rollback**: keep `.env` in your own secure backup (never in git) so you can restore a previous value if a config change causes problems.
 
-## Environment variables reference
+## Friends, Voice Notes and Community Photos
+
+Before deploying this update, take a database backup, build the updated images, and run `docker compose run --rm backend alembic upgrade head`. Revision `20260919_social_places` adds four tables without replacing existing data. Its downgrade intentionally refuses to erase messages and uploaded photos.
+
+The backend requirements now include Pillow for image normalization and PyAV for bounded audio decoding. Their packaged wheels provide the required media libraries on supported Python platforms. Media lives in the database, so existing PostgreSQL backups include it; allow for larger backups and never expose those backups publicly. No writable upload directory needs mounting in the container.
+
+Deploy the updated Nginx configuration with its 9 MB request cap and `Cross-Origin-Opener-Policy: same-origin-allow-popups` header. Keep `/api/` uncached and on the frontend origin. HTTPS is required for microphone capture and Google sign-in on deployed origins. Local microphone capture works on `localhost` but normally not on a plain HTTP LAN address.
+
+Configure `GOOGLE_CLIENT_ID` in the private monolith `.env` with your Google Cloud **Web application** OAuth client ID, authorize the deployed HTTPS origin in Google Auth Platform, and complete consent-screen setup. No Google client secret or Maps API key is needed. Restart the backend after changes. The step-by-step [Google sign-in setup](../frontend/README.md#google-sign-in-and-sign-up) includes local origins and verification steps. Automated tests substitute Google responses; a real account consent test must be completed by the project owner.
+
+Verify `/api/health` and `/api/ready` through the frontend proxy, then check a friend request between two test accounts, private voice playback, an attributed place submission, and a photo on an existing place. These actions create real records; use accounts and content intended for testing. Review storage, rate limits and moderation needs before opening contributions to a large public audience.
+
+## Environment Variables Reference
 
 See `backend/.env.example` (app-level) and `.env.example` at the repo root (docker-compose-level — Postgres credentials, JWT secret, CORS origins).

@@ -112,6 +112,238 @@ def test_catalogue_and_community_require_auth(client, path, authorization):
     assert response.headers["Cache-Control"] == "no-store"
 
 
+def test_friendship_consent_and_private_message_ownership():
+    alice = db.add_user({"name": "Alice", "email": "alice@example.com", "password_hash": "unused"})["id"]
+    bob = db.add_user({"name": "Bob", "email": "bob@example.com", "password_hash": "unused"})["id"]
+    carol = db.add_user({"name": "Carol", "email": "carol@example.com", "password_hash": "unused"})["id"]
+    with pytest.raises(ValueError):
+        db.request_friendship(alice, alice)
+    friendship, created = db.request_friendship(alice, bob)
+    friendship_id = friendship["id"]
+    assert created and friendship["status"] == "outgoing"
+    assert db.request_friendship(bob, alice)[1] is False
+    assert db.get_friendships(bob)[0]["status"] == "incoming"
+    assert db.accept_friendship(alice, friendship_id) is None
+    assert db.accept_friendship(carol, friendship_id) is None
+    assert db.get_direct_messages(alice, friendship_id) is None
+    with pytest.raises(ValueError):
+        db.add_direct_message(alice, friendship_id, "pending", "Hello")
+    assert db.accept_friendship(bob, friendship_id)["status"] == "accepted"
+    message, created = db.add_direct_message(alice, friendship_id, "retry-id", "Hello Bob")
+    assert created
+    assert db.add_direct_message(alice, friendship_id, "retry-id", "Hello Bob")[1] is False
+    assert db.get_direct_messages(bob, friendship_id)["messages"][0]["message"] == "Hello Bob"
+    assert db.get_direct_messages(carol, friendship_id) is None
+    with pytest.raises(ValueError):
+        db.add_direct_message(carol, friendship_id, "intruder", "Hello")
+    assert db.delete_direct_message(bob, friendship_id, message["id"]) is None
+    assert db.delete_direct_message(alice, friendship_id, message["id"])["deleted"]
+    assert not db.remove_friendship(carol, friendship_id)
+    assert db.remove_friendship(bob, friendship_id)
+    assert db.get_direct_messages(alice, friendship_id) is None
+    assert db.get_friendships(alice) == []
+
+
+def _accepted_friends(client):
+    register(client)
+    register(client, name="Bob", email="bob@example.com")
+    alice_headers = auth_header(client)
+    bob_headers = auth_header(client, email="bob@example.com")
+    bob_id = db.get_user_by_email("bob@example.com")["id"]
+    response = client.post("/friends", headers=alice_headers, json={"user_id": bob_id})
+    assert response.status_code == 201
+    friendship_id = response.get_json()["id"]
+    assert client.patch(f"/friends/{friendship_id}", headers=alice_headers, json={"action": "accept"}).status_code == 404
+    assert client.get(f"/friends/{friendship_id}/messages", headers=alice_headers).status_code == 404
+    assert client.patch(f"/friends/{friendship_id}", headers=bob_headers, json={"action": "accept"}).status_code == 200
+    return friendship_id, alice_headers, bob_headers
+
+
+def _wave_bytes(seconds=1):
+    from io import BytesIO
+    import wave
+    output = BytesIO()
+    with wave.open(output, "wb") as recording:
+        recording.setnchannels(1)
+        recording.setsampwidth(2)
+        recording.setframerate(8000)
+        recording.writeframes(b"\x00\x00" * 8000 * seconds)
+    return output.getvalue()
+
+
+def test_friends_api_text_and_voice(client):
+    from io import BytesIO
+    import uuid
+    friendship_id, alice_headers, bob_headers = _accepted_friends(client)
+    path = f"/friends/{friendship_id}/messages"
+    assert client.get("/friends").status_code == 401
+    assert client.get("/friends", headers=alice_headers).get_json()[0]["status"] == "accepted"
+    payload = {"message": "Meet at the cafe?", "client_id": str(uuid.uuid4())}
+    assert client.post(path, headers=alice_headers, json=payload).status_code == 201
+    assert client.post(path, headers=alice_headers, json=payload).status_code == 200
+    assert client.post(path, headers=alice_headers, json={"message": "", "client_id": str(uuid.uuid4())}).status_code == 400
+    assert client.get(path + "?before_id=bad", headers=bob_headers).status_code == 400
+    assert client.get(path + "?limit=101", headers=bob_headers).status_code == 400
+    response = client.post(path, headers=alice_headers, data={
+        "client_id": str(uuid.uuid4()), "audio": (BytesIO(_wave_bytes()), "note.wav"),
+    })
+    assert response.status_code == 201
+    voice = response.get_json()
+    assert voice["duration"] == 1
+    audio_response = client.get(voice["audio_url"], headers=bob_headers)
+    assert audio_response.status_code == 200
+    assert audio_response.mimetype == "audio/wav"
+    assert audio_response.headers["Cache-Control"] == "no-store"
+    assert client.get(voice["audio_url"]).status_code == 401
+    register(client, name="Carol", email="carol@example.com")
+    carol_headers = auth_header(client, email="carol@example.com")
+    assert client.get(path, headers=carol_headers).status_code == 404
+    assert client.get(voice["audio_url"], headers=carol_headers).status_code == 404
+    assert client.post(path, headers=carol_headers, json=payload).status_code == 404
+    assert client.delete(f"{path}/{voice['id']}", headers=bob_headers).status_code == 404
+    assert client.delete(f"{path}/{voice['id']}", headers=alice_headers).status_code == 200
+    assert client.get(voice["audio_url"], headers=bob_headers).status_code == 404
+
+
+def test_uploaded_media_are_decoded_and_bounded():
+    from io import BytesIO
+    from PIL import Image
+    from werkzeug.datastructures import FileStorage
+    from media import prepare_audio, prepare_photo, MAX_AUDIO_BYTES
+    with pytest.raises(ValueError):
+        prepare_audio(FileStorage(BytesIO(b"not audio"), filename="voice.webm", content_type="audio/webm"))
+    with pytest.raises(ValueError, match="2 minutes"):
+        prepare_audio(FileStorage(BytesIO(_wave_bytes(121))))
+    with pytest.raises(ValueError, match="5 MB"):
+        prepare_audio(FileStorage(BytesIO(b"0" * (MAX_AUDIO_BYTES + 1))))
+    with pytest.raises(ValueError):
+        prepare_photo(FileStorage(BytesIO(b"not a photo"), filename="place.jpg"))
+    image_file = BytesIO()
+    Image.new("RGB", (2200, 100), "green").save(image_file, "PNG")
+    image_file.seek(0)
+    result = prepare_photo(FileStorage(image_file, filename="place.png"))
+    with Image.open(BytesIO(result)) as image:
+        assert image.format == "JPEG"
+        assert image.width == 1920
+        assert not image.getexif()
+
+
+@pytest.mark.parametrize("container_format,codec,expected_type", [("webm", "libopus", "audio/webm"), ("mp4", "aac", "audio/mp4"), ("ogg", "libopus", "audio/ogg")])
+def test_browser_voice_formats_are_decoded(container_format, codec, expected_type):
+    from io import BytesIO
+    import av
+    from werkzeug.datastructures import FileStorage
+    from media import prepare_audio
+    output = BytesIO()
+    with av.open(output, mode="w", format=container_format) as container:
+        stream = container.add_stream(codec, rate=48000)
+        stream.layout = "mono"
+        for _ in range(50):
+            frame = av.AudioFrame(format="s16", layout="mono", samples=960)
+            frame.sample_rate = 48000
+            frame.planes[0].update(b"\x00" * 1920)
+            for packet in stream.encode(frame):
+                container.mux(packet)
+        for packet in stream.encode(None):
+            container.mux(packet)
+    content = output.getvalue()
+    saved, media_type, duration = prepare_audio(FileStorage(BytesIO(content), filename="voice-note"))
+    assert saved == content
+    assert media_type == expected_type
+    assert 0.9 <= duration <= 1.1
+
+
+def _photo_bytes():
+    from io import BytesIO
+    from PIL import Image
+    output = BytesIO()
+    Image.new("RGB", (32, 24), "green").save(output, "PNG")
+    return output.getvalue()
+
+
+def test_community_place_creation_has_trusted_attribution_and_a_photo(client, authenticated_headers):
+    from io import BytesIO
+    import json
+    import uuid
+    identifier = str(uuid.uuid4())
+    details = {"name": "Community garden", "category": "nature", "neighborhood": "Bastos", "address": "Bastos, Yaounde", "lat": 3.88, "lng": 11.51, "description": "A garden added by a traveler.", "tags": ["outdoor"]}
+    def payload(values=details):
+        return {"client_id": identifier, "details": json.dumps(values), "photo": (BytesIO(_photo_bytes()), "garden.png")}
+    response = client.post("/destinations", headers=authenticated_headers, data=payload())
+    assert response.status_code == 201
+    place = response.get_json()
+    assert place["added_by"] == {"id": db.get_user_by_email("alice@example.com")["id"], "name": "Alice"}
+    assert place["rating"] == 0 and place["rating_count"] == 0
+    assert place["active"] is True
+    image = client.get(place["cover_photo_url"], headers=authenticated_headers)
+    assert image.status_code == 200 and image.mimetype == "image/jpeg"
+    assert image.headers["Cache-Control"] == "no-store"
+    assert client.get(place["cover_photo_url"]).status_code == 401
+    assert client.post("/destinations", headers=authenticated_headers, data=payload()).status_code == 200
+    assert len(db.get_destinations()) == 3
+    gallery = client.get(f"/destinations/{place['id']}/photos", headers=authenticated_headers).get_json()
+    assert gallery["count"] == 1 and gallery["photos"][0]["user_name"] == "Alice"
+    for invalid in ({**details, "lat": 91}, {**details, "lng": float("nan")}, {**details, "lat": True}, {**details, "added_by": {"id": 999}}, {**details, "category": "anything"}):
+        assert client.post("/destinations", headers=authenticated_headers, data=payload(invalid)).status_code == 400
+    assert client.post("/destinations", data=payload()).status_code == 401
+
+
+def test_place_photos_have_pagination_ownership_and_cover_cleanup(client, authenticated_headers):
+    from io import BytesIO
+    import uuid
+    identifier = str(uuid.uuid4())
+    def upload():
+        return {"client_id": identifier, "caption": "The terrace", "photo": (BytesIO(_photo_bytes()), "terrace.png")}
+    response = client.post("/destinations/1/photos", headers=authenticated_headers, data=upload())
+    assert response.status_code == 201
+    photo = response.get_json()
+    assert photo["caption"] == "The terrace"
+    assert client.post("/destinations/1/photos", headers=authenticated_headers, data=upload()).status_code == 200
+    assert client.get("/destinations/1/photos?before_id=invalid", headers=authenticated_headers).status_code == 400
+    assert client.get("/destinations/999/photos", headers=authenticated_headers).status_code == 404
+    assert client.get(f"/destinations/2/photos/{photo['id']}/image", headers=authenticated_headers).status_code == 404
+    register(client, name="Bob", email="bob@example.com")
+    bob_headers = auth_header(client, email="bob@example.com")
+    assert client.get(photo["image_url"], headers=bob_headers).status_code == 200
+    photo_path = f"/destinations/1/photos/{photo['id']}"
+    assert client.delete(photo_path, headers=bob_headers).status_code == 404
+    assert client.delete(photo_path, headers=authenticated_headers).status_code == 200
+    assert client.get(photo["image_url"], headers=authenticated_headers).status_code == 404
+    user_id = db.get_user_by_email("alice@example.com")["id"]
+    for index in range(13):
+        db.add_destination_photo(user_id, 1, str(uuid.uuid4()), f"View {index}", _photo_bytes())
+    first = client.get("/destinations/1/photos", headers=authenticated_headers).get_json()
+    assert len(first["photos"]) == 12 and first["count"] == 13
+    last = client.get(f"/destinations/1/photos?before_id={first['next_before']}", headers=authenticated_headers).get_json()
+    assert len(last["photos"]) == 1 and last["next_before"] is None
+    place, _ = db.add_community_destination(user_id, str(uuid.uuid4()), {"name": "Park", "category": "nature", "neighborhood": "Bastos", "address": "Bastos", "lat": 3.8, "lng": 11.5, "description": "Park"}, _photo_bytes())
+    cover = db.get_destination_photos(place["id"])["photos"][0]
+    assert db.delete_destination_photo(user_id, place["id"], cover["id"])
+    assert db.get_destination_by_id(place["id"])["cover_photo_url"] is None
+
+
+def test_social_migration_preserves_existing_accounts(tmp_path):
+    from pathlib import Path
+    import subprocess
+    from sqlalchemy import create_engine, inspect, text
+    backend = Path(__file__).resolve().parents[1]
+    url = f"sqlite:///{tmp_path / 'upgrade.db'}"
+    environment = {**os.environ, "DATABASE_URL": url}
+    command = [sys.executable, "-m", "alembic", "-c", str(backend / "alembic.ini"), "upgrade"]
+    subprocess.run([*command, "20260911_recovery"], cwd=backend, env=environment, capture_output=True, text=True, check=True, timeout=60)
+    engine = create_engine(url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("INSERT INTO users (id, name, email, password_hash, preferences, created_at) VALUES (42, 'Existing Traveler', 'existing@example.com', 'unchanged-hash', '[]', CURRENT_TIMESTAMP)"))
+        subprocess.run([*command, "head"], cwd=backend, env=environment, capture_output=True, text=True, check=True, timeout=60)
+        assert {"friendships", "direct_messages", "destination_photos", "destination_contributions"} <= set(inspect(engine).get_table_names())
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT name, password_hash FROM users WHERE id = 42")).one() == ("Existing Traveler", "unchanged-hash")
+            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260919_social_places"
+    finally:
+        engine.dispose()
+
+
 def test_health_and_preflight_remain_public(client):
     assert client.get("/health").status_code == 200
     assert client.get("/ready").status_code == 200

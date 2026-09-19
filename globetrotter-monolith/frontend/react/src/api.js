@@ -1,18 +1,20 @@
 export const API_BASE = (import.meta.env?.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 
-export async function api(path, options = {}) {
+export async function api(path, { responseType = 'json', ...options } = {}) {
   const token = localStorage.getItem('gt_token');
+  const multipart = options.body instanceof FormData;
   let response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...options,
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers },
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      headers: { ...(!multipart ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers },
+      body: options.body === undefined ? undefined : multipart ? options.body : JSON.stringify(options.body),
     });
   } catch (error) {
     if (error.name === 'AbortError') throw error;
     throw new Error('Cannot reach GlobeTrotter. Check your connection and try again.');
   }
+  if (response.ok && responseType === 'blob') return response.blob();
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 429) throw new Error('Too many requests. Please wait a moment and try again.');

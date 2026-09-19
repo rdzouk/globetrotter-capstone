@@ -5,6 +5,7 @@ import { useApp } from './state';
 import { api } from './api';
 import { useSheet } from './useSheet';
 import { localDate, placeImage } from './utils';
+import { AuthenticatedImage } from './Media';
 
 export const categories = {
   restaurant: 'Restaurants', hotel: 'Hotels', nature: 'Nature', landmark: 'Landmarks', attraction: 'Attractions',
@@ -40,6 +41,7 @@ export function PlaceImage({ place, className = '', ...props }) {
   const { translate } = useApp();
   const [failed, setFailed] = useState(false);
   const image = placeImage(place);
+  if (place.cover_photo_url) return <AuthenticatedImage path={place.cover_photo_url} alt={place.name} className={className} retry={false} {...props} />;
   return failed || !image ? <div className={`image-fallback ${className}`} role="img" aria-label={translate('Photo unavailable for {name}', { name: place.name })}><ImageOff size={28} /><span>{place.name}</span></div> : <img src={image} alt={place.name} onError={() => setFailed(true)} className={className} {...props} />;
 }
 export function SaveButton({ place }) {
@@ -98,6 +100,7 @@ export function PlaceCard({ place, onPlan, compact = false }) {
     <div className="place-body"><div className="place-title-row"><h2><Link to={`/places/${place.id}`}>{place.name}</Link></h2><span className="rating"><Star size={14} fill="currentColor" />{number(place.rating || 0, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span></div>
       <p className="place-location"><MapPin size={14} />{place.neighborhood || 'Yaounde'}<span className="price">{'$'.repeat(Math.min(4, Math.max(0, place.price_level || 0)))}</span></p>
       <p className="place-description">{language === 'fr' && place.description_fr ? place.description_fr : translate(place.description)}</p>
+      {place.added_by && <p className="community-attribution">{translate('Added by {name}', { name: place.added_by.name })}</p>}
       <DestinationActions place={place} />
       <div className="place-footer"><span className="place-tag">{translate((place.tags?.find(tag => tag !== place.category) || 'local favorite').replaceAll('-', ' '))}</span><button className="text-button" onClick={() => onPlan(place)}>{translate('Plan a visit')}<ArrowRight size={16} /></button></div>
     </div>

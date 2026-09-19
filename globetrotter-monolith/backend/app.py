@@ -39,6 +39,8 @@ import google_signin
 import recovery
 import fares
 from administration import register_administration
+from social import register_social
+from contributions import register_contributions
 
 database.init_db()
 
@@ -62,6 +64,7 @@ logger = logging.getLogger("globetrotter")
 logger.addFilter(_RequestIdFilter())
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 9 * 1024 * 1024
 CORS(app, origins=config.CORS_ORIGINS)
 
 limiter = Limiter(get_remote_address, app=app, storage_uri=config.REDIS_URL, default_limits=[], enabled=config.RATELIMIT_ENABLED)
@@ -97,6 +100,8 @@ def require_auth(f):
 
 # ---------------------------------------------------------------------
 register_administration(app, require_auth)
+register_social(app, require_auth, limiter)
+register_contributions(app, require_auth, limiter)
 
 
 # Request lifecycle: ID assignment, timing, structured logging,

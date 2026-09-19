@@ -43,6 +43,7 @@ import { AuthPage, Feedback, Profile } from "./Account";
 const Chat = lazy(() => import('./Chat'));
 const Recovery = lazy(() => import('./Recovery'));
 const Admin = lazy(() => import('./Admin'));
+const AddPlace = lazy(() => import('./CommunityPlaces'));
 
 const navigation = [
   ["/", "Explore", Compass],
@@ -51,11 +52,12 @@ const navigation = [
   ["/favorites", "Saved places", Heart],
   ["/itineraries", "My trips", RouteIcon],
   ["/planner", "Weekly planner", CalendarDays],
-  ["/chat", "Community chat", MessagesSquare],
+  ["/chat", "Messages", MessagesSquare],
 ];
 const titles = {
   "/": "Explore",
   "/map": "City map",
+  "/places/new": "Add a place",
   "/recommendations": "For you",
   "/favorites": "Saved places",
   "/itineraries": "My trips",
@@ -66,7 +68,7 @@ const titles = {
   "/register": "Create account",
   "/forgot-password": "Recover your account",
   "/reset-password": "Reset password",
-  "/chat": "Community chat",
+  "/chat": "Messages",
   "/admin": "Administration",
 };
 
@@ -390,6 +392,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Explore onPlan={plan} />} />
             <Route path="/map" element={<Explore mode="map" onPlan={plan} />} />
+            <Route path="/places/new" element={<RequireAuth><Suspense fallback={<Loading />}><AddPlace /></Suspense></RequireAuth>} />
             <Route
               path="/places/:id"
               element={<PlaceDetail key={location.pathname} onPlan={plan} />}

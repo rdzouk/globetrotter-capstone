@@ -14,6 +14,7 @@ import {
   Heart,
   Sparkles,
   ArrowUpRight,
+  Plus,
 } from "lucide-react";
 import { useApp, useResource } from "./state";
 import {
@@ -114,6 +115,7 @@ export default function Explore({ mode = "explore", onPlan }) {
         title={title}
         description={description}
       >
+        {(mode === 'explore' || mode === 'map') && <Link to="/places/new" className="button"><Plus size={17} />{translate('Add a place')}</Link>}
         {mode === "explore" && (
           <Link to="/planner" className="button secondary">
             {translate("Plan my week")}

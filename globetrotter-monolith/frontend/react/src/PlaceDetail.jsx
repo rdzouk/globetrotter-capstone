@@ -3,6 +3,7 @@ import { Link, useLocation, useParams, useSearchParams } from "react-router-dom"
 import {
   ArrowLeft,
   CalendarPlus,
+  Images,
   MapPin,
   Phone,
   Send,
@@ -10,6 +11,7 @@ import {
 } from "lucide-react";
 import { api } from "./api";
 import { useApp, useResource } from "./state";
+import { FriendButton } from "./Friends";
 import {
   categories,
   Empty,
@@ -24,6 +26,7 @@ import {
 } from "./components";
 
 const MapView = lazy(() => import("./MapView"));
+const PlacePhotos = lazy(() => import('./CommunityPlaces').then(module => ({ default: module.PlacePhotos })));
 
 export default function PlaceDetail({ onPlan }) {
   const { id } = useParams();
@@ -33,7 +36,7 @@ export default function PlaceDetail({ onPlan }) {
   const reviews = useResource(`/destinations/${id}/reviews`);
   const comments = useResource(`/destinations/${id}/comments`);
   const nearby = useResource(`/destinations/${id}/nearby?limit=3`);
-  const tab = ['about', 'reviews', 'comments', 'map'].includes(params.get('tab')) ? params.get('tab') : 'about';
+  const tab = ['about', 'reviews', 'comments', 'photos', 'map'].includes(params.get('tab')) ? params.get('tab') : 'about';
   function setTab(value) { setParams(current => { const next = new URLSearchParams(current); next.set('tab', value); return next; }, { replace: true }); }
   const listedPlace = (places.data || []).find((item) => item.id === Number(id));
   const archivedPlace = useResource(!places.loading && !places.error && !listedPlace ? `/destinations/${id}` : null);
@@ -76,6 +79,7 @@ export default function PlaceDetail({ onPlan }) {
             {place.neighborhood}
           </p>
           <h1>{place.name}</h1>
+          {place.added_by && <p className="community-attribution"><span>{translate('Community place')}</span>{translate('Added by {name}', { name: place.added_by.name })}</p>}
           <p className="place-location">
             <MapPin size={16} />
             {place.address}
@@ -93,6 +97,7 @@ export default function PlaceDetail({ onPlan }) {
       {place.active === false && <p className="archived-notice" role="status">{translate('This destination is archived and unavailable for new plans.')}</p>}
       <div className="detail-photo">
         <PlaceImage place={place} />
+        <button type="button" className="button secondary more-photos" onClick={() => { setTab('photos'); document.getElementById('detail-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}><Images size={18} />{translate('More photos')}</button>
         <div className="photo-caption">
           <span className="rating">
             <Star size={16} fill="currentColor" />
@@ -113,6 +118,7 @@ export default function PlaceDetail({ onPlan }) {
               ["about", "Overview"],
               ["reviews", "Reviews ({count})"],
               ["comments", "Conversation"],
+              ["photos", "Photos"],
               ["map", "Location"],
             ].map(([value, label]) => (
               <button
@@ -125,14 +131,14 @@ export default function PlaceDetail({ onPlan }) {
                 className={tab === value ? "active" : ""}
                 onClick={() => setTab(value)}
                 onKeyDown={(event) => {
-                  const tabs = ["about", "reviews", "comments", "map"];
+                  const tabs = ["about", "reviews", "comments", "photos", "map"];
                   if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
                     event.preventDefault();
                     const next =
                       tabs[
                         (tabs.indexOf(tab) +
-                          (event.key === "ArrowRight" ? 1 : 3)) %
-                          4
+                          (event.key === "ArrowRight" ? 1 : tabs.length - 1)) %
+                          tabs.length
                       ];
                     setTab(next);
                     document.getElementById(`tab-${next}`)?.focus();
@@ -233,6 +239,7 @@ export default function PlaceDetail({ onPlan }) {
                 )}
               </>
             )}
+            {tab === "photos" && <Suspense fallback={<Loading />}><PlacePhotos place={place} /></Suspense>}
             {tab === "map" && (
               <Suspense fallback={<Loading />}>
                 <MapView places={[place]} onPlan={onPlan} />
@@ -312,6 +319,7 @@ function Comment({ comment, placeId, onSaved, canReply, isReply = false }) {
         <strong>{comment.user_name || translate("Traveler")}</strong>
         <time dateTime={comment.created_at}>{date(comment.created_at, { hour: '2-digit', minute: '2-digit' })}</time>
       </div>
+      <FriendButton userId={comment.user_id} name={comment.user_name || translate('Traveler')} />
       <p>{comment.message}</p>
       <small className="comment-author">{translate(isReply ? "Reply by {name}" : "Comment by {name}", { name: comment.user_name || translate("Traveler") })}</small>
       {comment.review && <div className="comment-visit-review"><span className="rating"><Star size={14} fill="currentColor" />{number(comment.review.rating)}/5</span><strong>{translate("Review by {name}", { name: comment.user_name || translate("Traveler") })}</strong><p>{comment.review.comment}</p><time dateTime={comment.review.visited_date}>{translate("Visited {date}", { date: date(comment.review.visited_date) })}</time></div>}

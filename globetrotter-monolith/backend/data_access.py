@@ -10,11 +10,12 @@ ever get from the authenticated request, never from client input).
 """
 from datetime import timezone
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import aliased, joinedload
 
 from database import get_session
 from models import User, Destination, Itinerary, Favorite, Feedback, Comment, GoogleIdentity, ChatMessage, AccountSecurity, DestinationPublication
+from models import Friendship, DirectMessage, DestinationContribution, DestinationPhoto
 
 
 def _utc_iso(value):
@@ -32,6 +33,7 @@ def _user_to_dict(u):
 
 def _destination_to_dict(d):
     publication = d.publication
+    contribution = d.contribution
     return {
         "id": d.id, "name": d.name, "category": d.category, "neighborhood": d.neighborhood,
         "address": d.address, "lat": d.lat, "lng": d.lng, "rating": d.rating,
@@ -40,6 +42,8 @@ def _destination_to_dict(d):
         "active": publication.active if publication else True,
         "description_fr": publication.description_fr if publication else "",
         "content_version": publication.version if publication else 0,
+        "added_by": {"id": contribution.user_id, "name": contribution.user.name if contribution.user else "Former user"} if contribution else None,
+        "cover_photo_url": f"/destinations/{d.id}/photos/{contribution.cover_photo_id}/image" if contribution and contribution.cover_photo_id else None,
     }
 
 
@@ -78,6 +82,124 @@ def _comment_to_dict(c):
 
 
 # ---- Users ----
+
+def _friendship_to_dict(friendship, user_id):
+    friend = friendship.higher_user if friendship.lower_user_id == user_id else friendship.lower_user
+    return {
+        "id": friendship.id, "user_id": friend.id, "name": friend.name,
+        "status": "accepted" if friendship.accepted else "outgoing" if friendship.requested_by == user_id else "incoming",
+        "created_at": _utc_iso(friendship.created_at),
+    }
+
+
+def _find_friendship(session, user_id, friendship_id, accepted=False):
+    query = session.query(Friendship).filter(
+        Friendship.id == friendship_id,
+        or_(Friendship.lower_user_id == user_id, Friendship.higher_user_id == user_id),
+    )
+    if accepted:
+        query = query.filter(Friendship.accepted.is_(True))
+    return query.first()
+
+
+def get_friendships(user_id):
+    with get_session() as session:
+        rows = session.query(Friendship).filter(or_(
+            Friendship.lower_user_id == user_id, Friendship.higher_user_id == user_id,
+        )).order_by(Friendship.accepted.desc(), Friendship.id.desc()).all()
+        return [_friendship_to_dict(friendship, user_id) for friendship in rows]
+
+
+def request_friendship(user_id, friend_id):
+    if type(friend_id) is not int or friend_id <= 0 or friend_id == user_id:
+        raise ValueError("Choose another traveler.")
+    with get_session() as session:
+        if not session.get(User, friend_id):
+            raise ValueError("Traveler unavailable.")
+        lower_id, higher_id = sorted((user_id, friend_id))
+        friendship = session.query(Friendship).filter_by(lower_user_id=lower_id, higher_user_id=higher_id).first()
+        created = friendship is None
+        if created:
+            friendship = Friendship(lower_user_id=lower_id, higher_user_id=higher_id, requested_by=user_id)
+            session.add(friendship)
+            session.flush()
+        return _friendship_to_dict(friendship, user_id), created
+
+
+def accept_friendship(user_id, friendship_id):
+    with get_session() as session:
+        friendship = _find_friendship(session, user_id, friendship_id)
+        if not friendship or (not friendship.accepted and friendship.requested_by == user_id):
+            return None
+        friendship.accepted = True
+        session.flush()
+        return _friendship_to_dict(friendship, user_id)
+
+
+def remove_friendship(user_id, friendship_id):
+    with get_session() as session:
+        friendship = _find_friendship(session, user_id, friendship_id)
+        if not friendship:
+            return False
+        session.delete(friendship)
+        return True
+
+
+def _direct_message_to_dict(message):
+    return {
+        "id": message.id, "user_id": message.user_id, "user_name": message.user.name,
+        "message": message.message, "deleted": message.deleted,
+        "client_id": message.client_id, "created_at": _utc_iso(message.created_at),
+        "audio_url": f"/friends/{message.friendship_id}/messages/{message.id}/audio" if message.audio_type and not message.deleted else None,
+        "duration": message.duration,
+    }
+
+
+def get_direct_messages(user_id, friendship_id, before_id=None, limit=50):
+    with get_session() as session:
+        if not _find_friendship(session, user_id, friendship_id, accepted=True):
+            return None
+        query = session.query(DirectMessage).filter_by(friendship_id=friendship_id)
+        if before_id is not None:
+            query = query.filter(DirectMessage.id < before_id)
+        rows = query.order_by(DirectMessage.id.desc()).limit(limit + 1).all()
+        return {"messages": [_direct_message_to_dict(message) for message in reversed(rows[:limit])], "has_more": len(rows) > limit}
+
+
+def add_direct_message(user_id, friendship_id, client_id, message="", audio=None):
+    with get_session() as session:
+        if not _find_friendship(session, user_id, friendship_id, accepted=True):
+            raise ValueError("Conversation unavailable.")
+        existing = session.query(DirectMessage).filter_by(friendship_id=friendship_id, user_id=user_id, client_id=client_id).first()
+        if existing:
+            return _direct_message_to_dict(existing), False
+        entry = DirectMessage(friendship_id=friendship_id, user_id=user_id, client_id=client_id, message=message)
+        if audio:
+            entry.audio, entry.audio_type, entry.duration = audio
+        session.add(entry)
+        session.flush()
+        return _direct_message_to_dict(entry), True
+
+
+def get_direct_audio(user_id, friendship_id, message_id):
+    with get_session() as session:
+        if not _find_friendship(session, user_id, friendship_id, accepted=True):
+            return None
+        message = session.query(DirectMessage).filter_by(id=message_id, friendship_id=friendship_id, deleted=False).first()
+        return (message.audio, message.audio_type) if message and message.audio_type else None
+
+
+def delete_direct_message(user_id, friendship_id, message_id):
+    with get_session() as session:
+        if not _find_friendship(session, user_id, friendship_id, accepted=True):
+            return None
+        message = session.query(DirectMessage).filter_by(id=message_id, friendship_id=friendship_id, user_id=user_id).first()
+        if not message:
+            return None
+        message.message, message.audio, message.audio_type, message.duration, message.deleted = "", None, None, None, True
+        session.flush()
+        return _direct_message_to_dict(message)
+
 
 def get_account_security(user_id):
     with get_session() as session:
@@ -138,6 +260,80 @@ def update_user(user_id, updates):
 
 
 # ---- Destinations ----
+
+def add_community_destination(user_id, client_id, details, image):
+    with get_session() as session:
+        existing = session.query(DestinationContribution).filter_by(user_id=user_id, client_id=client_id).first()
+        if existing:
+            return _destination_to_dict(existing.destination), False
+        place = Destination(**details, rating=0, rating_count=0, image_url="")
+        place.publication = DestinationPublication(active=True, description_fr="")
+        session.add(place)
+        session.flush()
+        photo = DestinationPhoto(destination_id=place.id, user_id=user_id, client_id=client_id, image=image)
+        session.add(photo)
+        session.flush()
+        place.contribution = DestinationContribution(user_id=user_id, client_id=client_id, cover_photo_id=photo.id)
+        session.flush()
+        return _destination_to_dict(place), True
+
+
+def _photo_to_dict(photo):
+    return {
+        "id": photo.id, "destination_id": photo.destination_id, "user_id": photo.user_id,
+        "user_name": photo.user.name if photo.user else "Former user", "caption": photo.caption,
+        "image_url": f"/destinations/{photo.destination_id}/photos/{photo.id}/image",
+        "created_at": _utc_iso(photo.created_at),
+    }
+
+
+def get_destination_photos(destination_id, before_id=None):
+    with get_session() as session:
+        if not session.get(Destination, destination_id):
+            return None
+        query = session.query(DestinationPhoto).filter_by(destination_id=destination_id)
+        count = query.count()
+        if before_id is not None:
+            query = query.filter(DestinationPhoto.id < before_id)
+        rows = query.order_by(DestinationPhoto.id.desc()).limit(13).all()
+        return {"photos": [_photo_to_dict(photo) for photo in rows[:12]], "count": count, "next_before": rows[11].id if len(rows) > 12 else None}
+
+
+def add_destination_photo(user_id, destination_id, client_id, caption, image):
+    with get_session() as session:
+        place = session.get(Destination, destination_id)
+        if not place or (place.publication and not place.publication.active):
+            raise ValueError("This destination is unavailable for new photos.")
+        photo = session.query(DestinationPhoto).filter_by(destination_id=destination_id, user_id=user_id, client_id=client_id).first()
+        if photo:
+            return _photo_to_dict(photo), False
+        photo = DestinationPhoto(destination_id=destination_id, user_id=user_id, client_id=client_id, caption=caption, image=image)
+        session.add(photo)
+        session.flush()
+        if place.contribution and not place.contribution.cover_photo_id:
+            place.contribution.cover_photo_id = photo.id
+        return _photo_to_dict(photo), True
+
+
+def get_destination_photo_image(destination_id, photo_id):
+    with get_session() as session:
+        photo = session.query(DestinationPhoto).filter_by(id=photo_id, destination_id=destination_id).first()
+        return photo.image if photo else None
+
+
+def delete_destination_photo(user_id, destination_id, photo_id, is_admin=False):
+    with get_session() as session:
+        photo = session.query(DestinationPhoto).filter_by(id=photo_id, destination_id=destination_id).first()
+        if not photo or (photo.user_id != user_id and not is_admin):
+            return False
+        contribution = session.get(DestinationContribution, destination_id)
+        if contribution and contribution.cover_photo_id == photo_id:
+            next_photo = session.query(DestinationPhoto.id).filter(DestinationPhoto.destination_id == destination_id, DestinationPhoto.id != photo_id).order_by(DestinationPhoto.id).first()
+            contribution.cover_photo_id = next_photo[0] if next_photo else None
+            session.flush()
+        session.delete(photo)
+        return True
+
 
 def get_destinations(include_archived=False):
     with get_session() as s:

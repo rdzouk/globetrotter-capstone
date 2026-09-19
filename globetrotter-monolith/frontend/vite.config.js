@@ -23,5 +23,5 @@ export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./react/src', import.meta.url)) } },
   worker: { format: 'es' },
   build: { outDir: '../dist', emptyOutDir: true },
-  server: { proxy: { '/api': { target: 'http://127.0.0.1:5000', changeOrigin: true, rewrite: path => path.replace(/^\/api/, '') } } },
+  server: { headers: { 'Cross-Origin-Opener-Policy': 'same-origin-allow-popups' }, proxy: { '/api': { target: 'http://127.0.0.1:5000', changeOrigin: true, rewrite: path => path.replace(/^\/api/, '') } } },
 });

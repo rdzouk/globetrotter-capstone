@@ -61,6 +61,61 @@ class MapBoundary extends Component {
   }
 }
 
+function PickerEvents({ point, onChange, onReady, onError }) {
+  const { map, isLoaded } = useMap();
+  const pickRef = useRef(onChange);
+  pickRef.current = onChange;
+  useEffect(() => { onReady(isLoaded); }, [isLoaded, onReady]);
+  useEffect(() => {
+    if (!map) return;
+    const select = event => {
+      if (event.originalEvent.target.closest('button, .maplibregl-ctrl')) return;
+      pickRef.current({ lat: event.lngLat.lat.toFixed(6), lng: event.lngLat.lng.toFixed(6) });
+    };
+    const fail = () => onError('The basemap could not finish loading. Check your connection or try again.');
+    const clear = () => onError('');
+    map.getCanvas().style.cursor = 'crosshair';
+    map.on('click', select);
+    map.on('error', fail);
+    map.on('idle', clear);
+    return () => { map.off('click', select); map.off('error', fail); map.off('idle', clear); };
+  }, [map, onError]);
+  useEffect(() => {
+    if (map && point && !map.getBounds().contains([point.lng, point.lat])) map.easeTo({ center: [point.lng, point.lat], zoom: 14, duration: 300 });
+  }, [map, point?.lat, point?.lng]);
+  return null;
+}
+
+export function LocationPicker({ value, onChange }) {
+  const { theme, language, translate } = useApp();
+  const [ready, setReady] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [error, setError] = useState('');
+  const [locating, setLocating] = useState(false);
+  const alive = useRef(true);
+  const point = value.lat !== '' && value.lng !== '' && Number.isFinite(Number(value.lat)) && Number.isFinite(Number(value.lng)) && Math.abs(Number(value.lat)) <= 90 && Math.abs(Number(value.lng)) <= 180 ? { lat: Number(value.lat), lng: Number(value.lng) } : null;
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  function locate() {
+    if (!navigator.geolocation || !window.isSecureContext) { setError('Location requires HTTPS or localhost.'); return; }
+    setLocating(true);
+    setError('');
+    navigator.geolocation.getCurrentPosition(position => {
+      if (!alive.current) return;
+      onChange({ lat: position.coords.latitude.toFixed(6), lng: position.coords.longitude.toFixed(6) });
+      setLocating(false);
+    }, () => {
+      if (!alive.current) return;
+      setError('Your location is unavailable. Please try again.');
+      setLocating(false);
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+  }
+  return <div className="place-location-picker" data-map-ready={ready}>
+    <div className="picker-actions"><button type="button" className="text-button" disabled={locating} onClick={locate}><LocateFixed size={17} />{translate('Use current location')}</button><button type="button" className="icon-button" title={translate('Clear location')} aria-label={translate('Clear location')} disabled={!point} onClick={() => onChange({ lat: '', lng: '' })}><X size={17} /></button></div>
+    <ErrorMessage>{error}</ErrorMessage>
+    <div className="mapcn-scope location-picker-canvas"><MapBoundary key={attempt} translate={translate} onRetry={() => { setReady(false); setError(''); setAttempt(current => current + 1); }}><Map key={language} center={point ? [point.lng, point.lat] : [11.52, 3.87]} zoom={13} theme={theme} className="city-map" locale={{ 'Map.Title': translate('Place location'), 'AttributionControl.ToggleAttribution': translate('Toggle attribution') }} canvasContextAttributes={{ preserveDrawingBuffer: import.meta.env.DEV }}><PickerEvents point={point} onChange={onChange} onReady={setReady} onError={setError} /><MapControls position="top-right" showZoom showCompass labels={{ zoomIn: translate('Zoom in'), zoomOut: translate('Zoom out'), compass: translate('Reset bearing to north') }} />{point && <MapMarker longitude={point.lng} latitude={point.lat} draggable onDragEnd={({ lng, lat }) => onChange({ lng: lng.toFixed(6), lat: lat.toFixed(6) })}><MarkerContent><span className="manual-origin-marker" role="img" aria-label={translate('Selected place location')}><MapPin size={20} /></span></MarkerContent></MapMarker>}</Map></MapBoundary></div>
+  </div>;
+}
+
 export default function MapView({ places, onPlan, selectedPlaceId = null, requestDirections = false }) {
   const { theme, language, translate, number, date } = useApp();
   const farePolicies = useResource('/fares');

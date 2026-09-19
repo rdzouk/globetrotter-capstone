@@ -13,3 +13,5 @@ SQLAlchemy==2.0.35
 alembic==1.13.2
 google-auth==2.40.3
 itsdangerous==2.2.0
+Pillow==12.3.0
+av==17.1.0

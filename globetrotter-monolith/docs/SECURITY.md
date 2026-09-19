@@ -45,7 +45,15 @@ Nginx sets the same headers again at the proxy layer for the static frontend.
 
 ## Input validation
 
-Every write endpoint validates its payload in `business_logic.py` before touching the database (`validate_registration_payload`, `validate_itinerary_payload`, `validate_review_payload`, `validate_feedback_payload`, `validate_profile_update`) and returns a 400 with specific error messages — never a raw stack trace.
+Write endpoints validate their payloads before persistence. Core account/trip validation lives in `business_logic.py`; administration, friendships and community submissions validate in their owning modules. Invalid inputs return client errors, never raw stack traces.
+
+## Uploads and private media
+
+Flask and Nginx both limit requests to 9 MB including multipart overhead. Photos are limited to 8 MB and 20 megapixels, decoded with Pillow, resized, re-encoded as JPEG and stripped of metadata. Voice notes are limited to 5 MB and two minutes; PyAV checks the actual audio content and duration, not just its filename or claimed MIME type. Upload endpoints also apply per-account rate limits.
+
+Private messages and recordings require an accepted friendship and a bearer token belonging to either participant. Only the sender can delete a message. Place photos require authentication; only the uploader or an administrator can delete them. Contributor identities come from the authenticated account. Media responses are marked `no-store` and are excluded from the service worker cache.
+
+Media is stored in the database, so backups contain private messages, voice notes and photos and need appropriate access controls. Private messaging is not end-to-end encrypted. Blocking, reporting, storage quotas and moderation queues are not implemented; review these needs before enabling contributions for a large public audience.
 
 ## SQL injection
 
@@ -68,7 +76,6 @@ The catch-all error handler (`handle_unexpected_error`) never returns Python tra
 - **Argon2id/bcrypt** — brief recommends these over PBKDF2; not yet upgraded (PBKDF2 via Werkzeug is still an acceptable production choice, just not the strongest available).
 - **Refresh tokens / logout-side revocation** — reset and role changes now revoke all prior JWTs through account session versions. Ordinary logout still only clears client storage; a stolen token remains valid until expiry or a security-version change. Per-device revocation and short-lived refresh sessions are not implemented.
 - **Audit coverage** — admin destination/fare edits, role changes and successful password resets are recorded with actor/time and changed field names, never credentials. Ordinary login attempts and other actions are not yet comprehensively audited.
-- **Request size limits** — not yet explicitly configured at the Flask level (Nginx's `client_max_body_size 2M` provides a coarse limit at the proxy).
 
 ## Reporting
 

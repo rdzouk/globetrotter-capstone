@@ -1,6 +1,6 @@
 # GlobeTrotter
 
-A responsive React application for exploring Yaounde, saving places, planning visits, and sharing reviews.
+A responsive React application for exploring Yaounde, saving places, planning visits, and sharing reviews. Travelers can add friends from place conversations, send private text and voice notes, contribute places with map-selected locations, and add attributed photos to place galleries. Google sign-in uses Google Identity Services and requires your own configured Web OAuth client ID.
 
 ## Supported Application
 

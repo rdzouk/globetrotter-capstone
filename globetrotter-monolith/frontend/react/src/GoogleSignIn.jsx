@@ -14,7 +14,11 @@ function loadGoogle() {
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
     const timer = setTimeout(() => { script.remove(); googleScript = null; reject(new Error('Google sign-in could not load. Please try again.')); }, 15000);
-    script.onload = () => { clearTimeout(timer); resolve(window.google); };
+    script.onload = () => {
+      clearTimeout(timer);
+      if (window.google?.accounts?.id) resolve(window.google);
+      else { script.remove(); googleScript = null; reject(new Error('Google sign-in could not load. Please try again.')); }
+    };
     script.onerror = () => { clearTimeout(timer); script.remove(); googleScript = null; reject(new Error('Google sign-in could not load. Please try again.')); };
     document.head.appendChild(script);
   });
@@ -26,6 +30,7 @@ export default function GoogleSignIn({ register, onSuccess }) {
   const config = useResource('/auth/google/config');
   const container = useRef(null);
   const callback = useRef(onSuccess);
+  const submitting = useRef(false);
   callback.current = onSuccess;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -33,22 +38,24 @@ export default function GoogleSignIn({ register, onSuccess }) {
     if (!config.data?.client_id) return;
     let active = true;
     const node = container.current;
-    setError('');
     loadGoogle().then(google => {
       if (!active || !node) return;
       google.accounts.id.initialize({
         client_id: config.data.client_id,
         nonce: config.data.nonce,
         auto_select: false,
+        use_fedcm_for_button: true,
+        button_auto_select: false,
         callback: async result => {
-          if (!active) return;
+          if (!active || submitting.current) return;
+          submitting.current = true;
           setBusy(true);
           setError('');
           try {
             const user = await api('/auth/google', { method: 'POST', body: { credential: result.credential } });
             if (active) callback.current(user);
           } catch (failure) { if (active) { setError(failure.message); config.reload(); } }
-          finally { if (active) setBusy(false); }
+          finally { submitting.current = false; if (active) setBusy(false); }
         },
       });
       node.replaceChildren();
