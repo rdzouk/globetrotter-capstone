@@ -206,6 +206,92 @@ test('saved sessions must be verified and can recover from verification errors',
   expect(await page.evaluate(() => localStorage.getItem('gt_token'))).toBeNull();
 });
 
+test('travel loading handles slow requests, errors, and retries', async ({ page }, testInfo) => {
+  await mockApi(page);
+  await page.clock.install();
+  let releaseRequest;
+  let unavailable = true;
+  const pending = new Promise(resolve => { releaseRequest = resolve; });
+  await page.route('**/api/destinations', async route => {
+    if (!unavailable) return route.fallback();
+    await pending;
+    return route.fulfill({ status: 503, json: { error: 'Temporarily unavailable' } });
+  });
+  await page.goto('/');
+  const loading = page.getByRole('status', { name: 'Loading places' });
+  try {
+    await expect(loading).toBeVisible();
+    await expect(loading.getByRole('heading', { name: 'Your next stop is loading' })).toBeVisible();
+    const traveler = loading.locator('.journey-traveler');
+    await expect(traveler).toHaveCSS('animation-name', 'journey-flight');
+    const initialTransform = await traveler.evaluate(element => getComputedStyle(element).transform);
+    await expect.poll(() => traveler.evaluate(element => getComputedStyle(element).transform)).not.toBe(initialTransform);
+    await expect(loading).toHaveCSS('opacity', '1');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('travel-loading.png'), scale: 'css' });
+    await page.clock.fastForward(8000);
+    await expect(loading.getByRole('heading', { name: 'Taking the scenic route' })).toBeVisible();
+    const bottomNav = page.locator('.bottom-nav');
+    if (await bottomNav.isVisible()) {
+      const loadingBounds = await loading.boundingBox();
+      expect(loadingBounds.y + loadingBounds.height).toBeLessThanOrEqual((await bottomNav.boundingBox()).y);
+    }
+  } finally { releaseRequest(); }
+  await expect(page.getByRole('heading', { name: 'A little detour' })).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText('Temporarily unavailable');
+  await expect(page.locator('.journey-error')).toHaveCSS('opacity', '1');
+  await expect(page.locator('.journey-error .journey-traveler > svg')).toHaveCSS('fill', 'none');
+  await page.screenshot({ path: testInfo.outputPath('travel-error.png'), fullPage: true, scale: 'css' });
+  unavailable = false;
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.locator('.place-card')).toHaveCount(2);
+  await expect(loading).toHaveCount(0);
+});
+
+test('travel loading respects reduced motion and French dark mode', async ({ page }, testInfo) => {
+  await mockApi(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.addInitScript(() => { localStorage.setItem('gt_lang', 'fr'); localStorage.setItem('gt_theme', 'dark'); });
+  let releaseRequest;
+  const pending = new Promise(resolve => { releaseRequest = resolve; });
+  await page.route('**/api/destinations', async route => { await pending; return route.fallback(); });
+  await page.goto('/places/1');
+  try {
+    await expect(page.locator('.topbar')).toBeVisible();
+    const loading = page.locator('.journey-state[role="status"]');
+    await expect(loading.getByRole('heading', { name: 'Votre prochaine escale se pr\u00e9pare' })).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(loading).toHaveCSS('animation-name', 'none');
+    await expect(loading.locator('.journey-traveler')).toHaveCSS('animation-name', 'none');
+    await expect(loading.locator('.journey-destination')).toHaveCSS('animation-name', 'none');
+    await expect(loading.locator('.journey-dots > span').first()).toHaveCSS('animation-name', 'none');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('travel-loading-reduced-dark-fr.png'), fullPage: true, scale: 'css' });
+    await page.setViewportSize({ width: 320, height: 780 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('travel-loading-320.png'), fullPage: true, scale: 'css' });
+  } finally { releaseRequest(); }
+  await expect(page.getByRole('heading', { name: 'Tassa', exact: true })).toBeVisible();
+  await expect(page.locator('.journey-state[role="status"]')).toHaveCount(0);
+});
+
+test('travel loading stays compact inside sign-in controls', async ({ page }) => {
+  await mockApi(page, false);
+  let releaseRequest;
+  const pending = new Promise(resolve => { releaseRequest = resolve; });
+  await page.route('**/api/auth/google/config', async route => { await pending; return route.fallback(); });
+  await page.goto('/login');
+  try {
+    const loading = page.locator('.google-signin').getByRole('status');
+    await expect(loading).toContainText('Loading...');
+    await expect(loading.locator('.journey-scene')).toHaveCount(0);
+    expect((await loading.boundingBox()).height).toBeLessThanOrEqual(64);
+    await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  } finally { releaseRequest(); }
+  await expect(page.getByRole('button', { name: 'Continue with Google', exact: true })).toBeVisible();
+});
+
 test('browse, filter, preserve query, and recover from an empty search', async ({ page }) => {
   await mockApi(page);
   await page.goto('/');
@@ -737,7 +823,7 @@ test('French and English switch all screen labels, content, dates, and drafts', 
   await expect(page.getByRole('button', { name: 'Envoyer mon avis' })).toBeVisible();
 });
 
-test('destination share, map, comment, and directions shortcuts target the exact place', async ({ page, context }) => {
+test('destination share, map, comment, and directions shortcuts target the exact place', async ({ page, context }, testInfo) => {
   await mockApi(page);
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'share', { value: undefined });
@@ -748,9 +834,12 @@ test('destination share, map, comment, and directions shortcuts target the exact
   await page.route('https://basemaps.cartocdn.com/gl/**/style.json', route => route.fulfill({ json: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#dfece5' } }] } }));
   await page.route('https://router.project-osrm.org/**', route => route.fulfill({ json: { routes: [{ distance: 1200, duration: 300, geometry: { coordinates: [[11.51, 3.88], [11.512, 3.885]] } }] } }));
   await page.goto('/?category=restaurant');
+  await expect(page.getByRole('button', { name: 'Share Tassa', exact: true })).toHaveText('Share');
   await page.getByRole('button', { name: 'Share Tassa', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('dialog').getByRole('img', { name: 'Tassa', exact: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Share link' })).toHaveValue(/\/places\/1$/);
+  await page.screenshot({ path: testInfo.outputPath('share-place.png'), fullPage: true });
   await page.getByRole('button', { name: 'Copy link' }).click();
   await expect(page.getByRole('button', { name: 'Link copied.' })).toBeVisible();
   expect(await page.evaluate(() => window.copiedShareLink)).toMatch(/\/places\/1$/);
@@ -758,9 +847,65 @@ test('destination share, map, comment, and directions shortcuts target the exact
   await page.getByRole('link', { name: 'Show Tassa on map', exact: true }).click();
   await expect(page).toHaveURL(/\/map\?place=1$/);
   await expect(page.locator('.map-popup')).toContainText('Tassa', { timeout: 15000 });
+  await expect(page.locator('.map-popup').getByRole('button', { name: 'Share Tassa', exact: true })).toHaveText('Share');
+  await page.screenshot({ path: testInfo.outputPath('share-map-popup.png'), fullPage: true });
+  await page.locator('.map-popup').getByRole('button', { name: 'Share Tassa', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Share link' })).toHaveValue(/\/places\/1$/);
+  await page.getByRole('button', { name: 'Close dialog' }).click();
   await page.goto('/?category=restaurant');
   await page.getByRole('link', { name: 'Directions to Tassa', exact: true }).click();
   await expect(page.locator('.route-summary')).toContainText('1.2 km', { timeout: 15000 });
+});
+
+test('a shared place link opens the exact place after recipient sign-in', async ({ page }) => {
+  await mockApi(page, false);
+  await page.goto('/places/44');
+  await expect(page).toHaveURL(/\/login$/);
+  await page.getByRole('textbox', { name: 'Email address', exact: true }).fill('traveler@example.test');
+  await page.getByLabel('Password', { exact: true }).fill('test-password');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page).toHaveURL(/\/places\/44$/);
+  await expect(page.getByRole('heading', { name: 'Mont Febe', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Share Mont Febe', exact: true }).first()).toHaveText('Share');
+});
+
+test('native place sharing handles completion, cancellation and copy-link fallback', async ({ page }, testInfo) => {
+  await mockApi(page);
+  await page.addInitScript(() => {
+    window.shareOutcome = 'success';
+    Object.defineProperty(navigator, 'share', { configurable: true, value: async data => {
+      window.nativeSharedPlace = data;
+      if (window.shareOutcome === 'cancel') throw new DOMException('Cancelled', 'AbortError');
+      if (window.shareOutcome === 'failure') throw new DOMException('Unavailable', 'NotAllowedError');
+    } });
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new DOMException('Denied', 'NotAllowedError'); } } });
+    document.execCommand = () => false;
+  });
+  await page.goto('/places/1');
+  const shareButton = page.locator('.detail-actions').getByRole('button', { name: 'Share Tassa', exact: true });
+  await shareButton.click();
+  expect(await page.evaluate(() => window.nativeSharedPlace)).toEqual({ title: 'Tassa', text: 'Visit Tassa in Bastos.', url: new URL('/places/1', page.url()).href });
+  await expect(shareButton).toBeEnabled();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.evaluate(() => { window.shareOutcome = 'cancel'; });
+  await shareButton.click();
+  await expect(shareButton).toBeEnabled();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.evaluate(() => { window.shareOutcome = 'failure'; });
+  await shareButton.click();
+  await expect(page.getByRole('dialog', { name: 'Share this place' })).toBeVisible();
+  await page.getByRole('button', { name: 'Copy link', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Could not copy the link.');
+  const link = page.getByRole('textbox', { name: 'Share link', exact: true });
+  await expect(link).toHaveValue(/\/places\/1$/);
+  expect(await link.evaluate(input => input.selectionStart === 0 && input.selectionEnd === input.value.length)).toBe(true);
+  await page.getByRole('button', { name: 'Close dialog' }).click();
+  await selectLanguage(page, 'fr');
+  await page.setViewportSize({ width: 320, height: 780 });
+  await page.locator('.detail-actions').getByRole('button', { name: 'Partager Tassa', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('share-place-fr-320.png'), fullPage: true });
 });
 
 test('Google sign-up uses configured identity service and preserves return destination', async ({ page }) => {

@@ -196,9 +196,10 @@ select { min-height: 42px; padding: 8px 28px 8px 12px; color: var(--ink); backgr
 .place-footer { border-top: 1px solid #edf0ec; min-height: 48px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .place-tag { font-size: 9px; color: #829086; text-transform: capitalize; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .place-footer .text-button { font-size: 10px; flex-shrink: 0; }
-.destination-actions { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; border-top: 1px solid var(--line); }
+.destination-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; border-top: 1px solid var(--line); }
 .destination-actions > .icon-button { width: 44px; height: 44px; color: var(--muted); border: 1px solid var(--line); }
 .destination-actions > .icon-button:hover { color: var(--green); background: var(--green-soft); }
+.destination-actions > .share-place-button { min-height: 44px; padding: 9px 13px; }
 .detail-actions .destination-actions { border: 0; padding: 0; }
 .load-more { display: flex; align-items: center; flex-direction: column; gap: 10px; padding: 34px 0 5px; }
 .load-more .button { min-width: 175px; }
@@ -212,10 +213,61 @@ select { min-height: 42px; padding: 8px 28px 8px 12px; color: var(--ink); backgr
 .empty-state p { color: var(--muted); font-size: 14px; }
 .loading-state { min-height: 190px; display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 13px; color: #789080; }
 .spin { animation: spin 1s linear infinite; }
-.skeleton-card { border: 1px solid var(--line); overflow: hidden; border-radius: 8px; background: white; margin-top: 24px; }
-.skeleton-card div { aspect-ratio: 1.62; background: #e7ede7; animation: pulse 1.6s ease infinite; }
-.skeleton-card span { display: block; height: 15px; margin: 18px; background: #eef2ee; width: 65%; border-radius: 3px; }
+.loading-state.is-compact { min-height: 64px; }
+.journey-state { min-height: 300px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 18px; padding: 30px 12px; color: var(--ink); text-align: center; animation: enter .35s ease-out both; }
+.journey-copy { max-width: 38ch; min-width: 0; }
+.journey-copy h2 { margin: 0 0 9px; font-size: 21px; line-height: 1.4; letter-spacing: 0; overflow-wrap: anywhere; }
+.journey-copy p { min-height: 44px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.journey-scene { position: relative; width: 240px; max-width: 100%; height: 124px; flex: 0 0 auto; overflow: hidden; }
+.journey-map { position: absolute; left: calc(50% - 54px); bottom: 8px; color: var(--line); fill: var(--paper); transform: rotate(-9deg); }
+.journey-path { position: absolute; left: 17%; right: 14%; top: 32px; height: 62px; border-top: 2px dashed var(--green); border-radius: 50%; opacity: .4; transform: rotate(-4deg); }
+.journey-origin { position: absolute; left: 18px; bottom: 10px; color: var(--gold); fill: var(--paper); }
+.journey-destination { position: absolute; right: 14px; bottom: 30px; color: var(--green); fill: var(--paper); animation: journey-arrival 4.8s ease-in-out infinite; }
+.journey-traveler { position: absolute; left: 0; top: 0; width: 100%; height: 32px; display: flex; color: var(--blue); animation: journey-flight 4.8s ease-in-out infinite; }
+.journey-traveler > svg { fill: var(--paper); stroke-width: 1.6; }
+.journey-dots { display: flex; justify-content: center; align-items: center; gap: 6px; height: 8px; margin-top: 16px; }
+.journey-dots > span { width: 5px; height: 5px; border-radius: 50%; background: var(--green); animation: journey-dot 1.4s ease-in-out infinite; }
+.journey-dots > span:nth-child(2) { background: var(--gold); animation-delay: .16s; }
+.journey-dots > span:nth-child(3) { background: var(--blue); animation-delay: .32s; }
+.journey-error > .error-message { max-width: 460px; width: fit-content; }
+.journey-error .journey-copy p { min-height: 0; }
+.journey-scene.is-stopped .journey-path { border-color: var(--muted); border-top-style: dotted; }
+.journey-scene.is-stopped .journey-traveler { left: calc(50% - 20px); top: 10px; width: 40px; height: 40px; color: var(--coral); animation: journey-compass .7s ease-out both; }
+.journey-scene.is-stopped .journey-traveler > svg { fill: none; }
+.journey-scene.is-stopped .journey-destination { color: var(--muted); animation: none; transform: rotate(14deg); }
+@keyframes journey-flight {
+  0% { transform: translate(9%, 50px); opacity: 0; }
+  12% { transform: translate(15%, 34px); opacity: 1; }
+  48% { transform: translate(45%, 2px); opacity: 1; }
+  82% { transform: translate(77%, 28px); opacity: 1; }
+  94%, 100% { transform: translate(82%, 38px); opacity: 0; }
+}
+@keyframes journey-arrival { 0%, 65%, 100% { transform: translateY(0); } 78% { transform: translateY(-5px); } 88% { transform: translateY(1px); } }
+@keyframes journey-dot { 0%, 70%, 100% { transform: translateY(0); opacity: .45; } 35% { transform: translateY(-4px); opacity: 1; } }
+@keyframes journey-compass { 0% { transform: rotate(-35deg); } 55% { transform: rotate(12deg); } 100% { transform: rotate(0); } }
+@keyframes skeleton-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.skeleton-card { border: 1px solid var(--line); overflow: hidden; border-radius: 8px; background: var(--paper); margin-top: 24px; }
+.skeleton-card div { position: relative; overflow: hidden; aspect-ratio: 1.62; background: var(--surface-muted); }
+.skeleton-card div::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, var(--paper), transparent); opacity: .65; animation: skeleton-shimmer 1.8s ease-in-out infinite; }
+.skeleton-card span { display: block; height: 15px; margin: 18px; background: var(--surface-muted); width: 65%; border-radius: 3px; }
 .skeleton-card span:last-child { width: 40%; margin-bottom: 50px; }
+@media (max-width: 640px) {
+  .journey-state { min-height: 0; padding: 12px; gap: 8px; }
+  .journey-scene { width: 200px; height: 76px; }
+  .journey-map { width: 64px; height: 64px; left: calc(50% - 32px); bottom: 5px; }
+  .journey-path { top: 16px; height: 45px; }
+  .journey-origin { left: 8px; bottom: 4px; }
+  .journey-destination { right: 8px; bottom: 18px; }
+  .journey-copy h2 { font-size: 18px; margin-bottom: 6px; }
+  .journey-copy p { min-height: 0; font-size: 12px; line-height: 1.6; }
+  .journey-dots { margin-top: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .journey-state, .journey-traveler, .journey-destination, .journey-dots > span, .journey-scene.is-stopped .journey-traveler, .skeleton-card div::after { animation: none; }
+  .journey-traveler { transform: translate(45%, 2px); }
+  .journey-scene.is-stopped .journey-traveler { transform: none; }
+  .skeleton-card div::after { display: none; }
+}
 .error-message { color: #a43c36; background: #fcf0ed; border-left: 3px solid #cd7267; padding: 12px 15px; font-size: 13px; line-height: 1.6; text-align: left; overflow-wrap: anywhere; }
 .image-fallback { width: 100%; height: 100%; background: repeating-linear-gradient(135deg, #e5eee4, #e5eee4 20px, #eaf1e9 20px, #eaf1e9 40px); color: #728575; display: flex; align-items: center; justify-content: center; flex-direction: column; padding: 18px; gap: 10px; text-align: center; font-size: 12px; }
 .modal { border: 1px solid #dfe8df; border-radius: 14px; width: min(520px, calc(100vw - 30px)); max-height: calc(100dvh - 40px); padding: 0; color: var(--ink); overflow-y: auto; overscroll-behavior: contain; box-shadow: 0 24px 100px #0c2f2845; will-change: transform; }
@@ -229,6 +281,9 @@ select { min-height: 42px; padding: 8px 28px 8px 12px; color: var(--ink); backgr
 .booking-place > img, .booking-place > .image-fallback { width: 68px; height: 65px; object-fit: cover; border-radius: 5px; }
 .booking-place strong { font-size: 14px; }
 .booking-place p { font-size: 12px; color: var(--muted); margin: 5px 0 0; }
+.share-place-preview { margin-bottom: 0; padding-bottom: 13px; }
+.share-place-preview > img, .share-place-preview > .image-fallback { flex-shrink: 0; }
+.share-place-preview > div:last-child { min-width: 0; overflow-wrap: anywhere; }
 .form-stack { display: flex; flex-direction: column; gap: var(--space-5); }
 .form-stack h2 { margin-bottom: 0; }
 .field { display: flex; flex-direction: column; gap: 9px; font-size: 12px; font-weight: 550; color: #5e7465; min-width: 0; }

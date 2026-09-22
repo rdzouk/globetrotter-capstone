@@ -64,7 +64,7 @@ export default function GoogleSignIn({ register, onSuccess }) {
     return () => { active = false; node?.replaceChildren(); };
   }, [config.data, language, theme, register]);
   return <div className="google-signin" aria-busy={busy}>
-    {config.loading ? <Loading /> : config.error ? <><ErrorMessage>{config.error}</ErrorMessage><button className="button secondary" onClick={config.reload}><RefreshCw size={16} />{translate('Try again')}</button></> : !config.data?.client_id ? <><button className="button secondary google-unavailable" disabled>{translate(register ? 'Sign up with Google' : 'Continue with Google')}</button><p className="muted">{translate('Google sign-in is not configured yet.')}</p></> : null}
+    {config.loading ? <Loading compact /> : config.error ? <><ErrorMessage>{config.error}</ErrorMessage><button className="button secondary" onClick={config.reload}><RefreshCw size={16} />{translate('Try again')}</button></> : !config.data?.client_id ? <><button className="button secondary google-unavailable" disabled>{translate(register ? 'Sign up with Google' : 'Continue with Google')}</button><p className="muted">{translate('Google sign-in is not configured yet.')}</p></> : null}
     <div ref={container} className="google-button" hidden={!config.data?.client_id || busy} />
     {busy && <p role="status">{translate('Verifying your Google account...')}</p>}
     <ErrorMessage>{error}</ErrorMessage>

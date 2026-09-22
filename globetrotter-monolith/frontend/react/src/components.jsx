@@ -1,6 +1,6 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, Heart, MapPin, Star, X, RefreshCw, SearchX, LoaderCircle, CalendarPlus, ImageOff, Share2, MessageCircle, Navigation, Copy, Check } from 'lucide-react';
+import { ArrowRight, Heart, MapPin, Star, X, RefreshCw, SearchX, LoaderCircle, CalendarPlus, ImageOff, Share2, MessageCircle, Navigation, Copy, Check, Map as MapIcon, Plane, Compass } from 'lucide-react';
 import { useApp } from './state';
 import { api } from './api';
 import { useSheet } from './useSheet';
@@ -21,9 +21,35 @@ export function ErrorMessage({ children }) {
   const { translate } = useApp();
   return children ? <div className="error-message" role="alert">{translate(children)}</div> : null;
 }
-export function Loading({ cards = false }) {
+function JourneyScene({ stopped = false }) {
+  return <div className={`journey-scene ${stopped ? 'is-stopped' : ''}`} aria-hidden="true">
+    <MapIcon className="journey-map" size={108} strokeWidth={1} />
+    <span className="journey-path" />
+    <MapPin className="journey-origin" size={25} strokeWidth={1.7} />
+    <MapPin className="journey-destination" size={30} strokeWidth={1.7} />
+    <span className="journey-traveler">{stopped ? <Compass size={40} /> : <Plane size={32} />}</span>
+  </div>;
+}
+export function Loading({ cards = false, compact = false }) {
   const { translate } = useApp();
-  return cards ? <div className="places-grid" aria-label={translate('Loading places')} aria-busy="true">{Array.from({ length: 6 }, (_, index) => <div key={index} className="skeleton-card"><div /><span /><span /></div>)}</div> : <div className="loading-state" role="status"><LoaderCircle className="spin" size={24} />{translate('Loading...')}</div>;
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (compact) return;
+    const timer = setTimeout(() => setSlow(true), 8000);
+    return () => clearTimeout(timer);
+  }, [compact]);
+  if (compact) return <div className="loading-state is-compact" role="status"><LoaderCircle className="spin" size={20} aria-hidden="true" />{translate('Loading...')}</div>;
+  return <>
+    <div className="loading-state journey-state" role="status" aria-label={translate(cards ? 'Loading places' : 'Loading...')} aria-live="polite" aria-atomic="true">
+      <JourneyScene />
+      <div className="journey-copy">
+        <h2>{slow ? translate('Taking the scenic route') : translate('Your next stop is loading')}</h2>
+        <p>{slow ? translate("This is taking longer than usual. We're still trying.") : translate('A little pause before your next discovery.')}</p>
+        <span className="journey-dots" aria-hidden="true"><span /><span /><span /></span>
+      </div>
+    </div>
+    {cards && <div className="places-grid" aria-hidden="true" aria-busy="true">{Array.from({ length: 6 }, (_, index) => <div key={index} className="skeleton-card"><div /><span /><span /></div>)}</div>}
+  </>;
 }
 export function Empty({ title = 'No places found', message = 'Try another search or clear your filters.', children }) {
   const { translate } = useApp();
@@ -31,7 +57,12 @@ export function Empty({ title = 'No places found', message = 'Try another search
 }
 export function ResourceError({ resource }) {
   const { translate } = useApp();
-  return <div className="empty-state"><h2>{translate('Something went wrong')}</h2><ErrorMessage>{resource.error}</ErrorMessage><button className="button secondary" onClick={resource.reload}><RefreshCw size={16} />{translate('Try again')}</button></div>;
+  return <div className="journey-state journey-error">
+    <JourneyScene stopped />
+    <div className="journey-copy"><h2>{translate('A little detour')}</h2><p>{translate("We couldn't load this stop. Let's try again.")}</p></div>
+    <ErrorMessage>{resource.error}</ErrorMessage>
+    <button type="button" className="button secondary" onClick={resource.reload}><RefreshCw size={16} aria-hidden="true" />{translate('Try again')}</button>
+  </div>;
 }
 export function PageHeading({ eyebrow, title, description, children }) {
   const { translate } = useApp();
@@ -55,16 +86,20 @@ export function SaveButton({ place }) {
 export function DestinationActions({ place, directions = true }) {
   const { translate } = useApp();
   const [sharing, setSharing] = useState(false);
+  const [shareBusy, setShareBusy] = useState(false);
   async function share() {
+    if (shareBusy) return;
     const url = new URL(`/places/${place.id}`, window.location.origin).href;
     if (navigator.share) {
+      setShareBusy(true);
       try { await navigator.share({ title: place.name, text: translate('Visit {name} in {neighborhood}.', { name: place.name, neighborhood: place.neighborhood || 'Yaounde' }), url }); return; }
       catch (error) { if (error.name === 'AbortError') return; }
+      finally { setShareBusy(false); }
     }
     setSharing(true);
   }
   return <div className="destination-actions" role="group" aria-label={place.name}>
-    <button type="button" className="icon-button" title={translate('Share')} aria-label={translate('Share {name}', { name: place.name })} onClick={share}><Share2 size={18} /></button>
+    <button type="button" className="button secondary share-place-button" title={translate('Share this place')} aria-label={translate('Share {name}', { name: place.name })} disabled={shareBusy} onClick={share}><Share2 size={18} />{translate('Share')}</button>
     <Link className="icon-button" title={translate('Show on map')} aria-label={translate('Show {name} on map', { name: place.name })} to={`/map?place=${place.id}`}><MapPin size={18} /></Link>
     <Link className="icon-button" title={translate('Comment')} aria-label={translate('Comment on {name}', { name: place.name })} to={`/places/${place.id}?tab=comments#comment-form`}><MessageCircle size={18} /></Link>
     {directions && <Link className="icon-button" title={translate('Go to this place')} aria-label={translate('Directions to {name}', { name: place.name })} to={`/map?place=${place.id}&directions=1`}><Navigation size={18} /></Link>}
@@ -90,7 +125,7 @@ function ShareModal({ place, onClose }) {
       catch { setError('Could not copy the link.'); }
     }
   }
-  return <Modal title="Share this place" onClose={onClose}><div className="form-stack"><strong>{place.name}</strong><Label>Share link<input ref={input} type="url" value={url} readOnly onFocus={event => event.target.select()} /></Label><ErrorMessage>{error}</ErrorMessage><button className="button" onClick={copy}>{copied ? <Check size={18} /> : <Copy size={18} />}{translate(copied ? 'Link copied.' : 'Copy link')}</button></div></Modal>;
+  return <Modal title="Share this place" onClose={onClose}><div className="form-stack"><div className="booking-place share-place-preview"><PlaceImage place={place} /><div><strong>{place.name}</strong><p>{place.address || place.neighborhood}</p></div></div><Label>Share link<input ref={input} type="url" value={url} readOnly onFocus={event => event.target.select()} /></Label><ErrorMessage>{error}</ErrorMessage><button type="button" className="button" onClick={copy}>{copied ? <Check size={18} /> : <Copy size={18} />}{translate(copied ? 'Link copied.' : 'Copy link')}</button></div></Modal>;
 }
 
 export function PlaceCard({ place, onPlan, compact = false }) {

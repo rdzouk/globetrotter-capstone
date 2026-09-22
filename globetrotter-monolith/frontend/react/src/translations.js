@@ -1,5 +1,11 @@
 export const french = {
   'Cancel': 'Annuler',
+  'Your next stop is loading': 'Votre prochaine escale se pr\u00e9pare',
+  'A little pause before your next discovery.': 'Une petite pause avant votre prochaine d\u00e9couverte.',
+  'Taking the scenic route': 'On prend le chemin des \u00e9coliers',
+  "This is taking longer than usual. We're still trying.": 'Le chargement prend plus de temps que pr\u00e9vu. Nous continuons.',
+  'A little detour': 'Un petit d\u00e9tour',
+  "We couldn't load this stop. Let's try again.": 'Impossible de charger cette escale. R\u00e9essayons.',
   'Add a place': 'Ajouter un lieu', 'Add place': 'Ajouter le lieu', 'Place details': 'Informations du lieu',
   'Choose a category': 'Choisir une cat\u00e9gorie', 'Description': 'Description', 'Place location': 'Emplacement du lieu',
   'Place photo': 'Photo du lieu', 'Selected photo preview': 'Aper\u00e7u de la photo choisie',
