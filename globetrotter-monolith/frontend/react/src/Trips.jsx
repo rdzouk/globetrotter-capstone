@@ -159,6 +159,7 @@ export default function Trips({ planner = false, onPlan }) {
           <Plus size={18} />
           {translate("Plan a visit")}
         </Link>
+        <Link to="/day-trips" className="button secondary"><CalendarDays size={18} />{translate('Day trips')}</Link>
       </PageHeading>
       <div className="trip-stats">
         <div>

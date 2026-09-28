@@ -6,6 +6,7 @@ import { translateText } from './i18n';
 import { localDate, placeImage } from './utils';
 import { categories, Empty, ErrorMessage, Label, Loading, Modal, PageHeading, PlaceImage, ResourceError } from './components';
 import './admin.css';
+import { ModerationQueue } from './Safety';
 
 export default function Admin() {
   const { session } = useApp();
@@ -22,8 +23,8 @@ function AdminWorkspace() {
       <dl className="admin-stats">{[['destinations', 'Destinations'], ['users', 'Accounts'], ['plans', 'Plans'], ['messages', 'Messages']].map(([key, label]) => <div key={key}><dt>{translate(label)}</dt><dd>{number(overview.data.counts[key])}</dd></div>)}</dl>
       <div className="admin-delivery"><span>{translate('Recovery delivery')}</span><span>{translate('Email address')}: {translate(overview.data.recovery.email ? 'Configured' : 'Not configured')}</span><span>{translate('Phone number')}: {translate(overview.data.recovery.phone ? 'Configured' : 'Not configured')}</span></div>
     </>}
-    <div className="admin-tabs" role="tablist" aria-label={translate('Administration sections')}>{[['destinations', 'Destinations'], ['fares', 'Fare policies'], ['audit', 'Audit log']].map(([value, label]) => <button key={value} role="tab" id={`admin-tab-${value}`} aria-selected={tab === value} aria-controls="admin-panel" onClick={() => setTab(value)}>{translate(label)}</button>)}</div>
-    <div id="admin-panel" role="tabpanel" aria-labelledby={`admin-tab-${tab}`}>{tab === 'destinations' ? <DestinationManager onChanged={overview.reload} /> : tab === 'fares' ? <FareManager /> : <AuditLog />}</div>
+    <div className="admin-tabs" role="tablist" aria-label={translate('Administration sections')}>{[['destinations', 'Destinations'], ['fares', 'Fare policies'], ['reports', 'Reports'], ['audit', 'Audit log']].map(([value, label]) => <button key={value} role="tab" id={`admin-tab-${value}`} aria-selected={tab === value} aria-controls="admin-panel" onClick={() => setTab(value)}>{translate(label)}</button>)}</div>
+    <div id="admin-panel" role="tabpanel" aria-labelledby={`admin-tab-${tab}`}>{tab === 'destinations' ? <DestinationManager onChanged={overview.reload} /> : tab === 'fares' ? <FareManager /> : tab === 'reports' ? <ModerationQueue /> : <AuditLog />}</div>
   </section>;
 }
 

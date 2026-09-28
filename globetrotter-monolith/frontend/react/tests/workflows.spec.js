@@ -18,6 +18,7 @@ const MAP_READY = { timeout: 30000 };
 
 async function mockApi(page, authenticated = true) {
   const state = { destinations: structuredClone(destinations), photos: [], photoUploads: {}, favorites: [], trips: [], comments: [], feedback: [], messages: [], friends: [], directMessages: {}, audioUploads: {}, calls: [], activity: { reviews: [], comments: [], replies: [] }, profile: { id: 1, name: 'Test Traveler', email: 'traveler@example.test', phone: null, preferences: ['outdoor'] } };
+  Object.assign(state, { notifications: [], dayTrips: [], members: {}, suggestions: {}, expenses: {}, events: [], blocks: [], reports: [] });
   async function addPhoto(destinationId, upload, caption = '') {
     const photo = { id: Math.max(0, ...state.photos.map(entry => entry.id)) + 1, destination_id: destinationId, user_id: state.profile.id, user_name: state.profile.name, caption, created_at: new Date().toISOString() };
     photo.image_url = `/destinations/${destinationId}/photos/${photo.id}/image`;
@@ -38,6 +39,69 @@ async function mockApi(page, authenticated = true) {
     const body = contentType.startsWith('multipart/form-data') ? Object.fromEntries(await new Response(request.postDataBuffer(), { headers: { 'Content-Type': contentType } }).formData()) : request.postDataJSON();
     state.calls.push({ path, method, body, authorization: request.headers().authorization });
     const respond = (data, status = 200) => route.fulfill({ status, json: data });
+    if (path === '/notifications') return respond({ items: state.notifications, unread_count: state.notifications.filter(item => !item.read).length });
+    if (path === '/notifications/read') { state.notifications.forEach(item => { if (body.ids.includes(item.id)) item.read = true; }); return respond({ marked: body.ids.length }); }
+    if (path === '/blocks') return respond(state.blocks);
+    if (/^\/blocks\/\d+$/.test(path)) {
+      const userId = Number(path.split('/')[2]);
+      if (method === 'DELETE') state.blocks = state.blocks.filter(person => person.user_id !== userId);
+      else {
+        state.blocks.push({ user_id: userId, name: 'Camille' });
+        state.friends = state.friends.filter(friend => friend.user_id !== userId);
+        state.messages = state.messages.filter(message => message.user_id !== userId);
+        state.comments = state.comments.filter(comment => comment.user_id !== userId);
+      }
+      return respond({ blocked: method === 'PUT' });
+    }
+    if (path === '/reports') { const report = { id: state.reports.length + 1, ...body, snapshot: { name: 'Camille', message: 'Reported message' }, status: 'open', created_at: new Date().toISOString() }; state.reports.push(report); return respond(report, 201); }
+    if (path === '/admin/reports') return respond({ items: state.reports.filter(report => report.status === new URL(request.url()).searchParams.get('status')), next_before: null });
+    if (/^\/admin\/reports\/\d+$/.test(path)) { const report = state.reports.find(item => item.id === Number(path.split('/')[3])); report.status = body.action === 'remove' ? 'removed' : 'dismissed'; return respond(report); }
+    if (path === '/admin/overview') return respond({ counts: { destinations: state.destinations.length, users: 3, plans: 1, messages: 1 }, recovery: { email: false, phone: false } });
+    if (path === '/admin/destinations') return respond(state.destinations);
+    if (path === '/events') {
+      const parameters = new URL(request.url()).searchParams;
+      return respond({ items: state.events.filter(event => (parameters.get('manage') === '1' || event.status === 'published' || (parameters.get('saved') === '1' && event.interested)) && (!parameters.get('category') || event.category === parameters.get('category')) && (parameters.get('saved') !== '1' || event.interested)), has_more: false });
+    }
+    if (/^\/events\/\d+\/interest$/.test(path)) { const event = state.events.find(item => item.id === Number(path.split('/')[2])); event.interested = method === 'PUT'; return respond(event); }
+    if (path === '/admin/events' || /^\/admin\/events\/\d+$/.test(path)) {
+      let event = state.events.find(item => item.id === Number(path.split('/')[3]));
+      if (!event) { event = { id: state.events.length + 1, version: 0 }; state.events.push(event); }
+      Object.assign(event, body, { version: event.version + 1, destination: state.destinations.find(place => place.id === body.destination_id) });
+      return respond(event, method === 'POST' ? 201 : 200);
+    }
+    if (path === '/day-trips' && method === 'POST') {
+      const trip = { ...body, id: state.dayTrips.length + 1, user_id: state.profile.id, version: 1, owner_name: state.profile.name, status: 'owner', stops: body.stops.map(stop => ({ ...stop, destination: state.destinations.find(place => place.id === stop.destination_id) })) };
+      state.dayTrips.push(trip); state.members[trip.id] = [{ user_id: 1, name: state.profile.name, status: 'owner' }]; return respond(trip, 201);
+    }
+    if (/^\/day-trips\/\d+$/.test(path)) {
+      const trip = state.dayTrips.find(item => item.id === Number(path.split('/')[2]));
+      if (method === 'DELETE') { state.dayTrips = state.dayTrips.filter(item => item !== trip); return respond({ removed: true }); }
+      Object.assign(trip, body, { version: trip.version + 1, stops: body.stops.map(stop => ({ ...stop, destination: state.destinations.find(place => place.id === stop.destination_id) })) }); return respond(trip);
+    }
+    if (path === '/shared-trips') return respond(state.dayTrips);
+    if (/^\/shared-trips\/\d+$/.test(path)) {
+      const tripId = Number(path.split('/')[2]);
+      const trip = state.dayTrips.find(item => item.id === tripId);
+      const expenses = state.expenses[tripId] || [];
+      const total = expenses.reduce((sum, expense) => sum + expense.amount_fcfa, 0);
+      return respond({ trip, viewer_id: state.profile.id, members: state.members[tripId] || [], suggestions: state.suggestions[tripId] || [], budget: { expenses, total_fcfa: total, remaining_fcfa: trip.budget_fcfa === null ? null : trip.budget_fcfa - total, balances: [], settlements: [] } });
+    }
+    if (/^\/shared-trips\/\d+\/members$/.test(path)) { const tripId = Number(path.split('/')[2]); state.members[tripId].push({ user_id: body.user_id, name: state.friends.find(friend => friend.user_id === body.user_id)?.name || 'Camille', status: 'invited' }); return respond({ invited: true }, 201); }
+    if (/^\/shared-trips\/\d+\/members\/\d+$/.test(path)) {
+      const tripId = Number(path.split('/')[2]); const userId = Number(path.split('/')[4]);
+      if (method === 'DELETE') state.members[tripId] = state.members[tripId].filter(member => member.user_id !== userId);
+      else { state.members[tripId].find(member => member.user_id === userId).status = 'accepted'; state.dayTrips.find(trip => trip.id === tripId).status = 'accepted'; }
+      return respond({ updated: true });
+    }
+    if (/^\/shared-trips\/\d+\/suggestions$/.test(path)) { const tripId = Number(path.split('/')[2]); const suggestions = state.suggestions[tripId] ||= []; suggestions.push({ id: suggestions.length + 1, name: state.profile.name, user_id: state.profile.id, destination: state.destinations.find(place => place.id === body.destination_id), voted: false, votes: 0 }); return respond(suggestions.at(-1), 201); }
+    if (/^\/shared-trips\/\d+\/suggestions\/\d+$/.test(path)) {
+      const tripId = Number(path.split('/')[2]); const suggestionId = Number(path.split('/')[4]);
+      if (method === 'DELETE') state.suggestions[tripId] = state.suggestions[tripId].filter(item => item.id !== suggestionId);
+      else { const suggestion = state.suggestions[tripId].find(item => item.id === suggestionId); Object.assign(suggestion, { voted: body.vote, votes: body.vote ? 1 : 0 }); }
+      return respond({ updated: true });
+    }
+    if (/^\/shared-trips\/\d+\/expenses$/.test(path)) { const tripId = Number(path.split('/')[2]); const expenses = state.expenses[tripId] ||= []; const expense = { ...body, id: expenses.length + 1, user_id: state.profile.id, name: state.profile.name }; expenses.push(expense); return respond(expense, 201); }
+    if (/^\/shared-trips\/\d+\/expenses\/\d+$/.test(path)) { const tripId = Number(path.split('/')[2]); state.expenses[tripId] = state.expenses[tripId].filter(expense => expense.id !== Number(path.split('/')[4])); return respond({ removed: true }); }
     if (path === '/destinations') {
       if (method === 'POST') {
         const place = { ...JSON.parse(body.details), id: 200 + state.destinations.length, active: true, rating: 0, rating_count: 0, image_url: '', added_by: { id: state.profile.id, name: state.profile.name } };
@@ -156,6 +220,166 @@ async function mockApi(page, authenticated = true) {
   });
   return state;
 }
+
+test('community tools notifications open the correct conversation and mark activity read', async ({ page }, testInfo) => {
+  const state = await mockApi(page);
+  state.friends.push({ id: 8, user_id: 2, name: 'Camille', status: 'accepted' });
+  state.notifications.push({ id: 'message:1', kind: 'message', actor_name: 'Camille', title: '', href: '/chat?view=friends&friend=8', read: false, created_at: new Date().toISOString() });
+  await page.goto('/notifications');
+  await expect(page.getByRole('link', { name: /New message from Camille/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Mark all read' }).click();
+  await expect(page.getByRole('button', { name: 'Mark all read' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Unread', exact: true }).click();
+  await expect(page.getByRole('heading', { name: "You're all caught up" })).toBeVisible();
+  await page.getByRole('button', { name: 'All activity' }).click();
+  await page.screenshot({ path: testInfo.outputPath('notifications.png'), fullPage: true });
+  await page.getByRole('link', { name: /New message from Camille/ }).click();
+  await expect(page.getByRole('region', { name: 'Private conversation' })).toBeVisible();
+  expect(state.notifications[0].read).toBe(true);
+});
+
+test('community tools day trips support invitations votes expenses and offline snapshots', async ({ page, context }, testInfo) => {
+  const state = await mockApi(page);
+  state.destinations.push({ ...destinations[1], id: 3, name: 'City garden' });
+  state.friends.push({ id: 8, user_id: 2, name: 'Camille', status: 'accepted' });
+  await page.goto('/day-trips');
+  await page.getByRole('button', { name: 'New day trip' }).click();
+  const editor = page.getByRole('dialog');
+  await editor.getByLabel('Trip name', { exact: true }).fill('Saturday with friends');
+  await editor.getByLabel('Budget (FCFA)', { exact: true }).fill('10000');
+  await editor.getByLabel('Estimated transport (FCFA)').fill('2000');
+  const stops = editor.locator('.stop-editor');
+  await stops.nth(0).getByRole('combobox', { name: 'Place', exact: true }).selectOption('1');
+  await stops.nth(1).getByRole('combobox', { name: 'Place', exact: true }).selectOption('44');
+  await editor.getByRole('button', { name: 'Save day trip' }).click();
+  await expect(page.getByRole('heading', { name: 'Saturday with friends' })).toBeVisible();
+  await expect(page.locator('.trip-stop-list > li')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Travelers', exact: true }).click();
+  await page.getByLabel('Invite a friend').selectOption('2');
+  await page.getByRole('button', { name: 'Invite', exact: true }).click();
+  await expect(page.getByText('Invited', { exact: true })).toBeVisible();
+  await page.getByLabel('Suggested place').selectOption('3');
+  await page.getByRole('button', { name: 'Suggest place' }).click();
+  await page.getByRole('button', { name: 'Vote for City garden' }).click();
+  await expect(page.getByRole('button', { name: 'Vote for City garden' })).toHaveAttribute('aria-pressed', 'true');
+  await page.screenshot({ path: testInfo.outputPath('shared-trip.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Budget', exact: true }).click();
+  await page.getByRole('button', { name: 'Add expense' }).click();
+  await page.getByRole('dialog').getByLabel('Expense title').fill('Lunch');
+  await page.getByRole('dialog').getByLabel('Amount (FCFA)').fill('1500');
+  await page.getByRole('dialog').getByLabel('Expense category').selectOption('food');
+  await page.getByRole('button', { name: 'Save expense' }).click();
+  await expect(page.getByText('Lunch', { exact: true })).toBeVisible();
+  await expect(page.locator('.budget-totals')).toContainText('8,500');
+  expect(state.expenses[1][0].participants).toEqual([1]);
+  await page.screenshot({ path: testInfo.outputPath('trip-budget.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Save offline', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Save offline', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Update offline pack' })).toBeVisible();
+  await page.goto('/offline-packs');
+  await page.getByRole('button', { name: /Saturday with friends/ }).click();
+  await context.setOffline(true);
+  await expect(page.getByRole('heading', { name: 'Saturday with friends' })).toBeVisible();
+  await expect(page.locator('.offline-stop')).toHaveCount(2);
+  await page.screenshot({ path: testInfo.outputPath('offline-pack.png'), fullPage: true });
+  await context.setOffline(false);
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect.poll(() => page.evaluate(() => new Promise(resolve => { const request = indexedDB.open('globetrotter-offline-v1'); request.onsuccess = () => { const database = request.result; const count = database.transaction('packs').objectStore('packs').count(); count.onsuccess = () => { resolve(count.result); database.close(); }; }; }))).toBe(0);
+});
+
+test('community tools production shell reloads downloaded trips completely offline', async ({ page, context }, testInfo) => {
+  test.skip(process.env.GT_TEST_PRODUCTION !== '1', 'Requires the built service worker.');
+  const state = await mockApi(page);
+  state.dayTrips.push({ id: 1, user_id: 1, title: 'Offline Saturday', trip_date: localDate(), start_time: '09:00', notes: 'Meet at the garden', budget_fcfa: 5000, transport_cost_fcfa: 1000, status: 'owner', owner_name: state.profile.name,
+    stops: destinations.map(destination => ({ destination_id: destination.id, destination, visit_minutes: 60, cost_fcfa: 1000 })) });
+  state.members[1] = [{ user_id: 1, name: state.profile.name, status: 'owner' }];
+  await page.goto('/day-trips?trip=1');
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+  await page.getByRole('button', { name: 'Save offline', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Save offline', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Update offline pack' })).toBeVisible();
+  await page.goto('/offline-packs');
+  await expect(page.getByRole('button', { name: /Offline Saturday/ })).toBeVisible();
+  const requests = state.calls.length;
+  await context.setOffline(true);
+  await page.reload();
+  await page.getByRole('button', { name: /Offline Saturday/ }).click();
+  await expect(page.getByRole('heading', { name: 'Offline Saturday' })).toBeVisible();
+  await expect(page.locator('.offline-stop')).toHaveCount(2);
+  await expect(page.locator('.offline-stop img')).toHaveCount(2);
+  expect(await page.locator('.offline-stop img').evaluateAll(images => images.every(image => image.complete && image.naturalWidth > 0))).toBe(true);
+  expect(state.calls.length).toBe(requests);
+  expect(await page.evaluate(async () => { const cacheNames = await caches.keys(); const cached = await Promise.all(cacheNames.map(async name => (await (await caches.open(name)).keys()).map(request => new URL(request.url).pathname))); return cached.flat().some(path => path.startsWith('/api/')); })).toBe(false);
+  await page.screenshot({ path: testInfo.outputPath('offline-reload.png'), fullPage: true });
+  await context.setOffline(false);
+});
+
+test('community tools events save interests and administrators publish source-linked events', async ({ page }, testInfo) => {
+  const state = await mockApi(page);
+  state.profile.role = 'admin';
+  await page.goto('/events');
+  await page.getByRole('button', { name: 'New event' }).click();
+  const editor = page.getByRole('dialog');
+  await editor.getByLabel('Event title (English)').fill('Bastos art weekend');
+  await editor.getByLabel('Event title (French)').fill('Art a Bastos');
+  await editor.getByLabel('Event description (English)').fill('Local art exhibition.');
+  await editor.getByLabel('Event description (French)').fill('Exposition locale.');
+  await editor.getByLabel('Event venue').selectOption('1');
+  await editor.getByLabel('Starts (Cameroon time)').fill('2026-10-03T10:00');
+  await editor.getByLabel('Ends (Cameroon time)').fill('2026-10-03T18:00');
+  await editor.getByLabel('Event category').selectOption('exhibition');
+  await editor.getByLabel('Entry price (FCFA)').fill('0');
+  await editor.getByLabel('Event source link').fill('https://example.com/event');
+  await editor.getByLabel('Publication status').selectOption('published');
+  await editor.getByRole('button', { name: 'Save event', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Bastos art weekend' })).toBeVisible();
+  await page.getByRole('button', { name: 'Save event', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Unsave event' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Saved events', exact: true }).click();
+  await expect(page.locator('.event-card')).toHaveCount(1);
+  await page.getByLabel('Event category').selectOption('music');
+  await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible();
+  await page.getByLabel('Event category').selectOption('exhibition');
+  await expect(page.getByRole('link', { name: 'Event source' })).toHaveAttribute('href', 'https://example.com/event');
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('events.png'), fullPage: true });
+  await selectLanguage(page, 'fr');
+  await page.setViewportSize({ width: 320, height: 780 });
+  await expect(page.getByRole('heading', { name: 'Art a Bastos' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('events-fr-320.png'), fullPage: true });
+});
+
+test('community tools reporting blocking and moderation work without exposing other conversations', async ({ page }, testInfo) => {
+  const state = await mockApi(page);
+  state.messages.push({ id: 1, user_id: 2, user_name: 'Camille', message: 'Reported message', created_at: new Date().toISOString(), deleted: false });
+  await page.goto('/chat');
+  await page.getByRole('button', { name: 'Report content by Camille' }).click();
+  await page.getByRole('dialog').getByLabel('Report reason').selectOption('spam');
+  await page.getByRole('dialog').getByLabel('Additional details').fill('Repeated unwanted messages.');
+  await page.getByRole('button', { name: 'Submit report' }).click();
+  await expect(page.getByRole('status')).toContainText('Report submitted.');
+  await page.getByRole('button', { name: 'Block Camille' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Block traveler', exact: true }).click();
+  await expect(page.getByText('Reported message', { exact: true })).toHaveCount(0);
+  await page.goto('/safety');
+  await expect(page.getByText('Camille', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Unblock', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Unblock', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'No blocked travelers' })).toBeVisible();
+  state.profile.role = 'admin';
+  await page.goto('/admin');
+  await page.getByRole('tab', { name: 'Reports', exact: true }).click();
+  await page.getByRole('button', { name: 'Review report' }).click();
+  await expect(page.getByRole('dialog')).toContainText('Repeated unwanted messages.');
+  await page.screenshot({ path: testInfo.outputPath('moderation.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Remove content', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Confirm', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'No reports', exact: true })).toBeVisible();
+  expect(state.reports[0].status).toBe('removed');
+});
 
 test('login gates the app, preserves the requested page, and blocks access after sign-out', async ({ page }, testInfo) => {
   const state = await mockApi(page, false);

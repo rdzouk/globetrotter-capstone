@@ -12,6 +12,7 @@ import {
 import { api } from "./api";
 import { useApp, useResource } from "./state";
 import { FriendButton } from "./Friends";
+import { SafetyActions } from './Safety';
 import {
   categories,
   Empty,
@@ -30,11 +31,11 @@ const PlacePhotos = lazy(() => import('./CommunityPlaces').then(module => ({ def
 
 export default function PlaceDetail({ onPlan }) {
   const { id } = useParams();
-  const { places, session, translate, number, date, language } = useApp();
+  const { places, session, translate, number, date, language, privacyVersion } = useApp();
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const reviews = useResource(`/destinations/${id}/reviews`);
-  const comments = useResource(`/destinations/${id}/comments`);
+  const comments = useResource(`/destinations/${id}/comments?privacy=${privacyVersion}`);
   const nearby = useResource(`/destinations/${id}/nearby?limit=3`);
   const tab = ['about', 'reviews', 'comments', 'photos', 'map'].includes(params.get('tab')) ? params.get('tab') : 'about';
   function setTab(value) { setParams(current => { const next = new URLSearchParams(current); next.set('tab', value); return next; }, { replace: true }); }
@@ -320,7 +321,8 @@ function Comment({ comment, placeId, onSaved, canReply, isReply = false }) {
         <time dateTime={comment.created_at}>{date(comment.created_at, { hour: '2-digit', minute: '2-digit' })}</time>
       </div>
       <FriendButton userId={comment.user_id} name={comment.user_name || translate('Traveler')} />
-      <p>{comment.message}</p>
+      {comment.message && <SafetyActions kind="comment" targetId={comment.id} userId={comment.user_id} name={comment.user_name} />}
+      <p>{comment.message || translate('Comment removed.')}</p>
       <small className="comment-author">{translate(isReply ? "Reply by {name}" : "Comment by {name}", { name: comment.user_name || translate("Traveler") })}</small>
       {comment.review && <div className="comment-visit-review"><span className="rating"><Star size={14} fill="currentColor" />{number(comment.review.rating)}/5</span><strong>{translate("Review by {name}", { name: comment.user_name || translate("Traveler") })}</strong><p>{comment.review.comment}</p><time dateTime={comment.review.visited_date}>{translate("Visited {date}", { date: date(comment.review.visited_date) })}</time></div>}
       {canReply && (

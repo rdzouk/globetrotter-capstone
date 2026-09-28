@@ -6,6 +6,7 @@ import { Empty, ErrorMessage, Label, Loading, Modal, PageHeading } from './compo
 import { useApp } from './state';
 import { FriendButton, FriendDirectory } from './Friends';
 import { VoicePlayback, VoiceRecorder } from './VoiceNote';
+import { SafetyActions } from './Safety';
 
 function mergeMessages(current, incoming) {
   const byId = new Map(current.map(message => [message.id, message]));
@@ -17,7 +18,7 @@ function mergeMessages(current, incoming) {
 }
 
 export default function Chat() {
-  const { friends, translate } = useApp();
+  const { friends, translate, privacyVersion } = useApp();
   const [params, setParams] = useSearchParams();
   const view = params.get('view') === 'friends' || params.has('friend') ? 'friends' : 'community';
   const selectedId = Number(params.get('friend'));
@@ -31,7 +32,7 @@ export default function Chat() {
     <PageHeading eyebrow="COMMUNITY" title="Messages"><Link className="button secondary" to="/profile">{translate('My activity')}<ArrowUpRight size={16} /></Link></PageHeading>
     <div className="chat-hub">
       <div className="segmented chat-tabs" role="group" aria-label={translate('Chat sections')}><button className={view === 'community' ? 'active' : ''} aria-pressed={view === 'community'} onClick={() => setParams({ view: 'community' })}><Hash size={17} />{translate('Community chat')}</button><button className={view === 'friends' ? 'active' : ''} aria-pressed={view === 'friends'} onClick={() => setParams({ view: 'friends' })}><Users size={17} />{translate('Friends')}</button></div>
-      {view === 'community' ? <Conversation key="community" /> : <div className={`social-layout ${friend ? 'has-conversation' : ''}`}><FriendDirectory selectedId={selectedId} onSelect={selectFriend} onRemoved={friendId => { if (friendId === selectedId) selectFriend(null); }} />{friend ? <Conversation key={friend.id} friend={friend} onBack={() => selectFriend(null)} /> : <div className="social-empty"><Empty title="Choose a friend" message="" /></div>}</div>}
+      {view === 'community' ? <Conversation key={`community-${privacyVersion}`} /> : <div className={`social-layout ${friend ? 'has-conversation' : ''}`}><FriendDirectory selectedId={selectedId} onSelect={selectFriend} onRemoved={friendId => { if (friendId === selectedId) selectFriend(null); }} />{friend ? <Conversation key={`${friend.id}-${privacyVersion}`} friend={friend} onBack={() => selectFriend(null)} /> : <div className="social-empty"><Empty title="Choose a friend" message="" /></div>}</div>}
     </div>
   </>;
 }
@@ -166,6 +167,7 @@ function Conversation({ friend = null, onBack }) {
             {message.reply_to && <blockquote><strong>{translate('Replying to {name}', { name: message.reply_to.user_name || translate('Traveler') })}</strong><p>{message.reply_to.deleted ? translate('Message deleted.') : message.reply_to.message}</p></blockquote>}
             <p className={message.deleted ? 'deleted-message' : ''}>{message.deleted ? translate('Message deleted.') : message.message}</p>
             {!message.deleted && message.audio_url && <VoicePlayback path={message.audio_url} duration={message.duration} />}
+            {!message.deleted && <SafetyActions kind={friend ? 'message' : 'chat'} targetId={message.id} userId={message.user_id} name={message.user_name} />}
             {!message.deleted && <div className="chat-message-actions">{!friend && <><button className="text-button" onClick={() => { setReply(message); composer.current?.focus(); }}><Reply size={14} />{translate('Reply')}</button><FriendButton userId={message.user_id} name={message.user_name} /></>}{message.user_id === profile.data?.id && <button className="icon-button" title={translate('Delete message')} aria-label={translate('Delete message')} onClick={() => setDeleting(message)}><Trash2 size={15} /></button>}</div>}
           </div>
         </article>)}

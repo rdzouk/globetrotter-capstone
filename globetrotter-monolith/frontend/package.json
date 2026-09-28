@@ -14,6 +14,7 @@
     "@fontsource-variable/dm-sans": "^5.2.0",
     "@fontsource-variable/manrope": "^5.2.0",
     "clsx": "^2.1.1",
+    "idb-keyval": "^6.3.0",
     "lucide-react": "^0.468.0",
     "maplibre-gl": "^6.9.0",
     "react": "^19.1.0",

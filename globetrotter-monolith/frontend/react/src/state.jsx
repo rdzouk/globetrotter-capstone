@@ -1,7 +1,9 @@
 import { createContext, useContext, useEffect, useReducer, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { api } from './api';
 import { formatLocalDate, formatNumber, localeFor, translateText } from './i18n';
 import { applyTheme, getThemePreference, resolveTheme } from './theme';
+import { clearOfflinePacks } from './offline';
 
 const AppContext = createContext(null);
 
@@ -24,6 +26,7 @@ export function useResource(path) {
 }
 
 export function AppProvider({ children }) {
+  const offlineMode = useLocation().pathname === '/offline-packs';
   const [session, setSession] = useState(() => ({ token: localStorage.getItem('gt_token'), name: localStorage.getItem('gt_name') || '', verified: false }));
   const [sessionError, setSessionError] = useState('');
   const [sessionVersion, retrySession] = useReducer(value => value + 1, 0);
@@ -33,12 +36,24 @@ export function AppProvider({ children }) {
   const theme = resolveTheme(themePreference, systemDark);
   const [toast, setToast] = useState(null);
   const [tripVersion, updateTrips] = useReducer(value => value + 1, 0);
-  const places = useResource(session.verified ? '/destinations' : null);
-  const favorites = useResource(session.verified ? '/favorites' : null);
-  const friends = useResource(session.verified ? '/friends' : null);
-  const currentUser = useResource(session.verified ? '/profile' : null);
+  const [privacyVersion, updatePrivacy] = useReducer(value => value + 1, 0);
+  const liveSession = session.verified && !offlineMode;
+  const places = useResource(liveSession ? '/destinations' : null);
+  const favorites = useResource(liveSession ? '/favorites' : null);
+  const friends = useResource(liveSession ? '/friends' : null);
+  const notifications = useResource(liveSession ? '/notifications' : null);
+  const currentUser = useResource(liveSession ? '/profile' : null);
+  const blocks = useResource(liveSession ? `/blocks?revision=${privacyVersion}` : null);
   const favoriteIds = new Set((favorites.data || []).map(place => place.id));
   const [savingFavorites, setSavingFavorites] = useState(new Set());
+
+  useEffect(() => {
+    if (!liveSession) return;
+    const refresh = () => { if (document.visibilityState === 'visible') notifications.reload(); };
+    const timer = setInterval(refresh, 30000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
+  }, [liveSession, notifications.reload]);
 
   useEffect(() => {
     localStorage.setItem('gt_lang', language);
@@ -63,11 +78,12 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     const expire = () => {
+      clearOfflinePacks().catch(() => {});
       setSession({ token: null, name: '', verified: false });
       setToast({ message: 'Your session has expired. Please sign in again.', error: true });
     };
     const syncSession = event => {
-      if (event.key === 'gt_token' || event.key === null) setSession({ token: localStorage.getItem('gt_token'), name: localStorage.getItem('gt_name') || '', verified: false });
+      if (event.key === 'gt_token' || event.key === null) { clearOfflinePacks().catch(() => {}); setSession({ token: localStorage.getItem('gt_token'), name: localStorage.getItem('gt_name') || '', verified: false }); }
     };
     window.addEventListener('gt:session-expired', expire);
     window.addEventListener('storage', syncSession);
@@ -75,7 +91,7 @@ export function AppProvider({ children }) {
   }, []);
   useEffect(() => {
     setSessionError('');
-    if (!session.token || session.verified) return;
+    if (!session.token || session.verified || offlineMode) return;
     const controller = new AbortController();
     api('/profile', { signal: controller.signal })
       .then(profile => {
@@ -83,7 +99,7 @@ export function AppProvider({ children }) {
       })
       .catch(error => { if (!controller.signal.aborted) setSessionError(error.message); });
     return () => controller.abort();
-  }, [session.token, session.verified, sessionVersion]);
+  }, [session.token, session.verified, sessionVersion, offlineMode]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(null), 5000);
@@ -91,11 +107,13 @@ export function AppProvider({ children }) {
   }, [toast]);
 
   function signIn(data) {
+    clearOfflinePacks().catch(() => {});
     localStorage.setItem('gt_token', data.token);
     localStorage.setItem('gt_name', data.name || '');
     setSession({ token: data.token, name: data.name || '', role: data.role || 'user', verified: true });
   }
   function signOut() {
+    clearOfflinePacks().catch(() => {});
     localStorage.removeItem('gt_token');
     localStorage.removeItem('gt_name');
     setSession({ token: null, name: '', verified: false });
@@ -103,6 +121,10 @@ export function AppProvider({ children }) {
   function updateName(name) {
     localStorage.setItem('gt_name', name);
     setSession(current => ({ ...current, name }));
+  }
+  function refreshPrivacy() {
+    updatePrivacy(); friends.reload(); notifications.reload();
+    clearOfflinePacks().catch(() => {});
   }
   async function toggleFavorite(place) {
     if (savingFavorites.has(place.id)) return;
@@ -118,7 +140,7 @@ export function AppProvider({ children }) {
       setSavingFavorites(current => new Set([...current].filter(id => id !== place.id)));
     }
   }
-  return <AppContext.Provider value={{ session, sessionError, retrySession, signIn, signOut, updateName, places, favorites, friends, currentUser, favoriteIds, savingFavorites, toggleFavorite, toast, setToast, tripVersion, updateTrips, language, setLanguage, theme, themePreference, setTheme, translate, number, date, locale }}>{children}</AppContext.Provider>;
+  return <AppContext.Provider value={{ session, sessionError, retrySession, signIn, signOut, updateName, places, favorites, friends, notifications, currentUser, blocks, privacyVersion, refreshPrivacy, favoriteIds, savingFavorites, toggleFavorite, toast, setToast, tripVersion, updateTrips, language, setLanguage, theme, themePreference, setTheme, translate, number, date, locale }}>{children}</AppContext.Provider>;
 }
 
 export function useApp() { return useContext(AppContext); }

@@ -42,6 +42,8 @@ BASELINE_DESTINATIONS = [
      "image_url": "https://loremflickr.com/640/420/spa?lock=2"},
 ]
 
+COMMUNITY_TABLES = {"notification_reads", "trip_members", "trip_suggestions", "trip_votes", "trip_expenses", "local_events", "event_interests", "user_blocks", "content_reports"}
+
 
 def _reset_database():
     """Drops and recreates every table, then inserts just the baseline
@@ -98,6 +100,401 @@ def auth_header(client, **kwargs):
 def authenticated_headers(client):
     register(client)
     return auth_header(client)
+
+
+def test_notifications_are_private_and_read_state_is_per_account(client, authenticated_headers):
+    register(client, name="Bob", email="bob@example.com")
+    bob_headers = auth_header(client, email="bob@example.com")
+    alice_id = db.get_user_by_email("alice@example.com")["id"]
+    friendship = client.post("/friends", headers=bob_headers, json={"user_id": alice_id}).get_json()
+    assert client.get("/notifications").status_code == 401
+    response = client.get("/notifications", headers=authenticated_headers)
+    assert response.status_code == 200
+    feed = response.get_json()
+    assert feed["unread_count"] == 1
+    notification = feed["items"][0]
+    assert notification["kind"] == "friend_request"
+    assert notification["actor_name"] == "Bob"
+    assert notification["read"] is False
+    assert client.get("/notifications", headers=bob_headers).get_json()["items"] == []
+    assert client.post("/notifications/read", headers=bob_headers, json={"ids": [notification["id"]]}).status_code == 404
+    assert client.post("/notifications/read", headers=authenticated_headers, json={"ids": [notification["id"]]}).status_code == 200
+    assert client.get("/notifications", headers=authenticated_headers).get_json()["unread_count"] == 0
+    client.patch(f"/friends/{friendship['id']}", headers=authenticated_headers, json={"action": "accept"})
+    assert client.get("/notifications", headers=authenticated_headers).get_json()["items"] == []
+
+
+def test_notifications_link_to_replies_and_distinguish_recreated_requests(client, authenticated_headers):
+    from datetime import datetime, timedelta, timezone
+    register(client, name="Bob", email="bob@example.com")
+    bob_headers = auth_header(client, email="bob@example.com")
+    alice_id = db.get_user_by_email("alice@example.com")["id"]
+    friendship = client.post("/friends", headers=bob_headers, json={"user_id": alice_id}).get_json()
+    old = client.get("/notifications", headers=authenticated_headers).get_json()["items"][0]
+    client.post("/notifications/read", headers=authenticated_headers, json={"ids": [old["id"]]})
+    client.delete(f"/friends/{friendship['id']}", headers=bob_headers)
+    client.post("/friends", headers=bob_headers, json={"user_id": alice_id})
+    fresh = client.get("/notifications", headers=authenticated_headers).get_json()["items"][0]
+    assert fresh["id"] != old["id"] and fresh["read"] is False
+    parent = client.post("/destinations/1/comments", headers=authenticated_headers, json={"message": "A question"}).get_json()
+    reply = client.post("/destinations/1/comments", headers=bob_headers, json={"message": "An answer", "parent_comment_id": parent["id"]}).get_json()
+    tomorrow = (datetime.now(timezone(timedelta(hours=1))).date() + timedelta(days=1)).isoformat()
+    db.add_itinerary({"user_id": alice_id, "destination_id": 1, "start_date": tomorrow, "end_date": tomorrow})
+    items = client.get("/notifications", headers=authenticated_headers).get_json()["items"]
+    assert next(item for item in items if item["kind"] == "reply")["href"] == f"/places/1?tab=comments#comment-{reply['id']}"
+    assert next(item for item in items if item["kind"] == "visit_reminder")["href"] == "/itineraries"
+
+
+def _day_trip_payload(**changes):
+    return {
+        "title": "Saturday in Yaounde",
+        "trip_date": "2026-10-03",
+        "start_time": "09:00",
+        "budget_fcfa": 15000,
+        "transport_cost_fcfa": 2000,
+        "notes": "Meet at the first stop.",
+        "stops": [
+            {"destination_id": 1, "visit_minutes": 60, "cost_fcfa": 4000},
+            {"destination_id": 2, "visit_minutes": 90, "cost_fcfa": None},
+        ],
+        **changes,
+    }
+
+
+def test_shared_trips_require_consent_and_enforce_membership(client, authenticated_headers):
+    from uuid import uuid4
+    register(client, name="Bob", email="bob@example.com")
+    bob_headers = auth_header(client, email="bob@example.com")
+    bob_id = db.get_user_by_email("bob@example.com")["id"]
+    alice_id = db.get_user_by_email("alice@example.com")["id"]
+    trip = client.post("/day-trips", headers=authenticated_headers, json=_day_trip_payload(client_id=str(uuid4()))).get_json()
+    path = f"/shared-trips/{trip['id']}"
+    assert client.get(path, headers=bob_headers).status_code == 404
+    assert client.post(path + "/members", headers=authenticated_headers, json={"user_id": bob_id}).status_code == 400
+    friendship = client.post("/friends", headers=bob_headers, json={"user_id": alice_id}).get_json()
+    client.patch(f"/friends/{friendship['id']}", headers=authenticated_headers, json={"action": "accept"})
+    assert client.post(path + "/members", headers=authenticated_headers, json={"user_id": bob_id}).status_code == 201
+    invitation = client.get("/shared-trips", headers=bob_headers).get_json()[0]
+    assert invitation["status"] == "invited"
+    assert "notes" not in invitation and "stops" not in invitation
+    assert client.get(path, headers=bob_headers).status_code == 404
+    assert client.patch(f"{path}/members/{bob_id}", headers=authenticated_headers, json={"accepted": True}).status_code == 400
+    assert client.patch(f"{path}/members/{bob_id}", headers=bob_headers, json={"accepted": True}).status_code == 200
+    assert client.get(path, headers=bob_headers).get_json()["trip"]["notes"] == trip["notes"]
+    suggestion = client.post(path + "/suggestions", headers=bob_headers, json={"destination_id": 1}).get_json()
+    vote_path = f"{path}/suggestions/{suggestion['id']}"
+    for _ in range(2):
+        assert client.put(vote_path, headers=bob_headers, json={"vote": True}).status_code == 200
+    assert client.get(path, headers=authenticated_headers).get_json()["suggestions"][0]["votes"] == 1
+    assert client.delete(f"{path}/members/{bob_id}", headers=authenticated_headers).status_code == 200
+    assert client.get(path, headers=bob_headers).status_code == 404
+    assert client.put(vote_path, headers=bob_headers, json={"vote": True}).status_code == 404
+
+
+def test_trip_expenses_split_exact_fcfa_and_reject_outsiders(client, authenticated_headers):
+    from uuid import uuid4
+    from models import TripMember
+    register(client, name="Bob", email="bob@example.com")
+    bob_headers = auth_header(client, email="bob@example.com")
+    bob_id = db.get_user_by_email("bob@example.com")["id"]
+    alice_id = db.get_user_by_email("alice@example.com")["id"]
+    trip = client.post("/day-trips", headers=authenticated_headers, json=_day_trip_payload(client_id=str(uuid4()), budget_fcfa=1000)).get_json()
+    path = f"/shared-trips/{trip['id']}"
+    payload = {"client_id": str(uuid4()), "title": "Taxi", "category": "transport", "amount_fcfa": 1001, "participants": [alice_id, bob_id]}
+    assert client.post(path + "/expenses", headers=bob_headers, json=payload).status_code == 404
+    assert client.post(path + "/expenses", headers=authenticated_headers, json=payload).status_code == 400
+    with database.get_session() as session:
+        session.add(TripMember(day_trip_id=trip["id"], user_id=bob_id, accepted=True))
+    response = client.post(path + "/expenses", headers=authenticated_headers, json=payload)
+    assert response.status_code == 201
+    assert client.post(path + "/expenses", headers=authenticated_headers, json=payload).status_code == 200
+    budget = client.get(path, headers=bob_headers).get_json()["budget"]
+    assert budget["total_fcfa"] == 1001 and budget["remaining_fcfa"] == -1
+    assert len(budget["expenses"]) == 1
+    assert sum(balance["balance_fcfa"] for balance in budget["balances"]) == 0
+    assert sum(balance["share_fcfa"] for balance in budget["balances"]) == 1001
+    assert budget["settlements"][0]["amount_fcfa"] == 500
+    for invalid in (0, -1, True, "100", 1.5, 10000001):
+        assert client.post(path + "/expenses", headers=authenticated_headers, json={**payload, "client_id": str(uuid4()), "amount_fcfa": invalid}).status_code == 400
+    for invalid in ([], [alice_id, alice_id], [999999], [True]):
+        assert client.post(path + "/expenses", headers=authenticated_headers, json={**payload, "client_id": str(uuid4()), "participants": invalid}).status_code == 400
+    expense_path = f"{path}/expenses/{response.get_json()['id']}"
+    assert client.delete(expense_path, headers=bob_headers).status_code == 404
+    assert client.delete(expense_path, headers=authenticated_headers).status_code == 200
+    assert client.get(path, headers=authenticated_headers).get_json()["budget"]["total_fcfa"] == 0
+
+
+def test_local_events_publication_filters_interest_and_admin_access(client, authenticated_headers):
+    from models import AccountSecurity
+    payload = {"title": "Local exhibition", "title_fr": "Exposition locale", "description": "A test event.", "description_fr": "Un evenement de test.",
+               "destination_id": 1, "category": "exhibition", "starts_at": "2026-10-03T10:00:00+01:00", "ends_at": "2026-10-03T18:00:00+01:00",
+               "price_fcfa": 0, "source_url": "https://example.com/event", "status": "draft"}
+    assert client.post("/admin/events", headers=authenticated_headers, json=payload).status_code == 403
+    assert client.get("/events?manage=1", headers=authenticated_headers).status_code == 403
+    alice_id = db.get_user_by_email("alice@example.com")["id"]
+    with database.get_session() as session:
+        session.merge(AccountSecurity(user_id=alice_id, role="admin", session_version=0))
+    response = client.post("/admin/events", headers=authenticated_headers, json=payload)
+    assert response.status_code == 201
+    event = response.get_json()
+    query = "/events?from=2026-10-03&to=2026-10-04"
+    assert client.get(query, headers=authenticated_headers).get_json()["items"] == []
+    assert client.put(f"/events/{event['id']}/interest", headers=authenticated_headers).status_code == 404
+    assert client.put(f"/admin/events/{event['id']}", headers=authenticated_headers, json={**payload, "status": "published", "version": 1}).status_code == 200
+    assert client.put(f"/admin/events/{event['id']}", headers=authenticated_headers, json={**payload, "version": 1}).status_code == 409
+    assert len(client.get(query + "&category=exhibition&q=locale", headers=authenticated_headers).get_json()["items"]) == 1
+    assert client.get(query + "&category=music", headers=authenticated_headers).get_json()["items"] == []
+    assert client.put(f"/events/{event['id']}/interest", headers=authenticated_headers).status_code == 200
+    assert len(client.get(query + "&saved=1", headers=authenticated_headers).get_json()["items"]) == 1
+    assert client.post("/admin/events", headers=authenticated_headers, json={**payload, "source_url": "javascript:alert(1)"}).status_code == 400
+    assert client.post("/admin/events", headers=authenticated_headers, json={**payload, "starts_at": "2026-10-03T10:00:00"}).status_code == 400
+    assert client.put(f"/admin/events/{event['id']}", headers=authenticated_headers, json={**payload, "status": "cancelled", "version": 2}).status_code == 200
+    assert client.get(query, headers=authenticated_headers).get_json()["items"] == []
+    assert client.get(query + "&saved=1", headers=authenticated_headers).get_json()["items"][0]["status"] == "cancelled"
+
+
+def test_blocking_stops_private_contact_and_hides_community_replies(client, authenticated_headers):
+    from uuid import uuid4
+    register(client, name="Bob", email="bob@example.com")
+    bob_headers = auth_header(client, email="bob@example.com")
+    bob_id = db.get_user_by_email("bob@example.com")["id"]
+    alice_id = db.get_user_by_email("alice@example.com")["id"]
+    friendship = client.post("/friends", headers=bob_headers, json={"user_id": alice_id}).get_json()
+    client.patch(f"/friends/{friendship['id']}", headers=authenticated_headers, json={"action": "accept"})
+    message = client.post("/chat/messages", headers=bob_headers, json={"client_id": str(uuid4()), "message": "Hello everyone"}).get_json()
+    comment = client.post("/destinations/1/comments", headers=bob_headers, json={"message": "Hello here"}).get_json()
+    assert client.put(f"/blocks/{bob_id}", headers=authenticated_headers).status_code == 200
+    assert client.get("/friends", headers=bob_headers).get_json() == []
+    assert client.post("/friends", headers=bob_headers, json={"user_id": alice_id}).status_code == 400
+    assert client.get(f"/friends/{friendship['id']}/messages", headers=bob_headers).status_code == 404
+    assert client.get("/chat/messages", headers=authenticated_headers).get_json()["messages"] == []
+    assert client.get("/destinations/1/comments", headers=authenticated_headers).get_json() == []
+    assert client.post("/chat/messages", headers=authenticated_headers, json={"client_id": str(uuid4()), "message": "Reply", "reply_to_id": message["id"]}).status_code == 404
+    assert client.post("/destinations/1/comments", headers=authenticated_headers, json={"message": "Reply", "parent_comment_id": comment["id"]}).status_code == 404
+    assert client.delete(f"/blocks/{bob_id}", headers=authenticated_headers).status_code == 200
+    assert client.get("/friends", headers=authenticated_headers).get_json() == []
+    assert len(client.get("/chat/messages", headers=authenticated_headers).get_json()["messages"]) == 1
+
+
+def test_reports_require_content_access_and_admin_moderation(client, authenticated_headers):
+    from uuid import uuid4
+    from models import AccountSecurity
+    register(client, name="Bob", email="bob@example.com")
+    register(client, name="Carol", email="carol@example.com")
+    bob_headers = auth_header(client, email="bob@example.com")
+    carol_headers = auth_header(client, email="carol@example.com")
+    alice_id = db.get_user_by_email("alice@example.com")["id"]
+    friendship = client.post("/friends", headers=bob_headers, json={"user_id": alice_id}).get_json()
+    client.patch(f"/friends/{friendship['id']}", headers=authenticated_headers, json={"action": "accept"})
+    message = client.post(f"/friends/{friendship['id']}/messages", headers=bob_headers, json={"client_id": str(uuid4()), "message": "Unwanted private message"}).get_json()
+    payload = {"target_type": "message", "target_id": message["id"], "reason": "spam", "details": "Please review this item."}
+    assert client.post("/reports", headers=carol_headers, json=payload).status_code == 404
+    report = client.post("/reports", headers=authenticated_headers, json=payload)
+    assert report.status_code == 201
+    report_id = report.get_json()["id"]
+    assert client.post("/reports", headers=authenticated_headers, json=payload).status_code == 200
+    assert client.get("/admin/reports", headers=authenticated_headers).status_code == 403
+    assert client.patch(f"/admin/reports/{report_id}", headers=authenticated_headers, json={"action": "remove"}).status_code == 403
+    with database.get_session() as session:
+        session.merge(AccountSecurity(user_id=alice_id, role="admin", session_version=0))
+    feed = client.get("/admin/reports", headers=authenticated_headers).get_json()
+    assert feed["items"][0]["snapshot"]["message"] == "Unwanted private message"
+    assert client.patch(f"/admin/reports/{report_id}", headers=authenticated_headers, json={"action": "remove"}).status_code == 200
+    assert client.patch(f"/admin/reports/{report_id}", headers=authenticated_headers, json={"action": "dismiss"}).status_code == 409
+    result = client.get(f"/friends/{friendship['id']}/messages", headers=bob_headers).get_json()["messages"][0]
+    assert result["deleted"] is True and result["message"] == ""
+
+
+def test_day_trip_payload_accepts_order_and_unknown_costs():
+    from business_logic import validate_day_trip_payload
+    payload = _day_trip_payload()
+    assert validate_day_trip_payload(payload, {1, 2}) == []
+    payload["stops"].reverse()
+    payload["budget_fcfa"] = None
+    payload["transport_cost_fcfa"] = 0
+    assert validate_day_trip_payload(payload, {1, 2}) == []
+    assert [stop["destination_id"] for stop in payload["stops"]] == [2, 1]
+
+
+@pytest.mark.parametrize("changes", [
+    {"title": " "}, {"title": "x" * 121}, {"title": None},
+    {"trip_date": "2026-02-30"}, {"trip_date": "2026-2-3"},
+    {"start_time": "25:00"}, {"start_time": "23:00"},
+    {"budget_fcfa": True}, {"budget_fcfa": -1},
+    {"transport_cost_fcfa": 1.5}, {"transport_cost_fcfa": 10000001},
+    {"notes": []}, {"notes": "x" * 4001},
+    {"stops": []}, {"stops": {}}, {"stops": [None, None]},
+    {"stops": [{"destination_id": 1, "visit_minutes": 60}] * 13},
+    {"stops": [{"destination_id": 1, "visit_minutes": 60}] * 2},
+])
+def test_day_trip_payload_rejects_invalid_values(changes):
+    from business_logic import validate_day_trip_payload
+    assert validate_day_trip_payload(_day_trip_payload(**changes), {1, 2})
+
+
+@pytest.mark.parametrize("field,value", [
+    ("destination_id", True), ("destination_id", 999), ("destination_id", []),
+    ("visit_minutes", 4), ("visit_minutes", 721), ("visit_minutes", False),
+    ("cost_fcfa", -1), ("cost_fcfa", "200"), ("cost_fcfa", True),
+])
+def test_day_trip_payload_rejects_invalid_stops(field, value):
+    from business_logic import validate_day_trip_payload
+    payload = _day_trip_payload()
+    payload["stops"][0][field] = value
+    assert validate_day_trip_payload(payload, {1, 2})
+
+
+def test_day_trip_payload_requires_object():
+    from business_logic import validate_day_trip_payload
+    assert validate_day_trip_payload([], {1, 2})
+
+
+def test_day_trip_api_round_trip_idempotency_and_conflicts(client, authenticated_headers):
+    from uuid import uuid4
+    from models import DayTripStop
+    payload = _day_trip_payload(client_id=str(uuid4()), user_id=999999)
+    response = client.post("/day-trips", headers=authenticated_headers, json=payload)
+    assert response.status_code == 201
+    assert response.headers["Cache-Control"] == "no-store"
+    saved = response.get_json()
+    assert saved["user_id"] == db.get_user_by_email("alice@example.com")["id"]
+    assert saved["version"] == 1
+    assert saved["stops"][1]["cost_fcfa"] is None
+    assert saved["stops"][0]["destination"]["name"] == "Tassa"
+    assert client.get("/day-trips", headers=authenticated_headers).get_json() == [saved]
+    repeated = client.post("/day-trips", headers=authenticated_headers, json={**payload, "title": "Do not replace"})
+    assert repeated.status_code == 200
+    assert repeated.get_json() == saved
+    path = f"/day-trips/{saved['id']}"
+    assert client.get(path, headers=authenticated_headers).get_json() == saved
+    db.add_itinerary({"user_id": saved["user_id"], "destination_id": 1, "start_date": "2026-10-03", "end_date": "2026-10-03"})
+    update = {**payload, "title": "  Afternoon together  ", "version": 1, "stops": list(reversed(payload["stops"]))}
+    response = client.put(path, headers=authenticated_headers, json=update)
+    assert response.status_code == 200
+    updated = response.get_json()
+    assert updated["version"] == 2
+    assert updated["title"] == "Afternoon together"
+    assert [stop["destination_id"] for stop in updated["stops"]] == [2, 1]
+    assert [stop["position"] for stop in updated["stops"]] == [0, 1]
+    assert client.put(path, headers=authenticated_headers, json=update).status_code == 409
+    assert client.delete(path, headers=authenticated_headers, json={"version": 1}).status_code == 409
+    assert client.get(path, headers=authenticated_headers).get_json() == updated
+    assert client.delete(path, headers=authenticated_headers, json={"version": 2}).status_code == 200
+    assert client.get(path, headers=authenticated_headers).status_code == 404
+    assert client.get("/day-trips", headers=authenticated_headers).get_json() == []
+    assert len(client.get("/itineraries", headers=authenticated_headers).get_json()) == 1
+    with database.get_session() as session:
+        assert session.query(DayTripStop).count() == 0
+
+
+def test_day_trip_api_enforces_owner_and_authentication(client, authenticated_headers):
+    from uuid import uuid4
+    payload = _day_trip_payload(client_id=str(uuid4()))
+    saved = client.post("/day-trips", headers=authenticated_headers, json=payload).get_json()
+    path = f"/day-trips/{saved['id']}"
+    register(client, name="Bob", email="bob@example.com")
+    other_headers = auth_header(client, email="bob@example.com")
+    assert client.get("/day-trips", headers=other_headers).get_json() == []
+    for method in ("GET", "PUT", "DELETE"):
+        assert client.open(path, method=method, headers=other_headers, json={**payload, "version": 1}).status_code == 404
+        assert client.open(path, method=method, json={**payload, "version": 1}).status_code == 401
+    assert client.get("/day-trips").status_code == 401
+    assert client.post("/day-trips", json=payload).status_code == 401
+    assert db.change_day_trip(db.get_user_by_email("bob@example.com")["id"], saved["id"], 1, payload) is None
+    assert client.get(path, headers=authenticated_headers).get_json() == saved
+
+
+def test_day_trip_api_rejects_invalid_edits_and_keeps_archived_stops(client, authenticated_headers):
+    from uuid import uuid4
+    from models import DestinationPublication
+    payload = _day_trip_payload(client_id=str(uuid4()))
+    for invalid in ([], {}, {**payload, "client_id": True}, {**payload, "stops": []}):
+        assert client.post("/day-trips", headers=authenticated_headers, json=invalid).status_code == 400
+    saved = client.post("/day-trips", headers=authenticated_headers, json=payload).get_json()
+    path = f"/day-trips/{saved['id']}"
+    for version in (None, True, "1", 0, 2147483647):
+        assert client.put(path, headers=authenticated_headers, json={**payload, "version": version}).status_code == 400
+    assert client.put(path, headers=authenticated_headers, json={**payload, "version": 1, "budget_fcfa": -1}).status_code == 400
+    assert client.get(path, headers=authenticated_headers).get_json() == saved
+    with database.get_session() as session:
+        session.add(DestinationPublication(destination_id=2, active=False))
+    assert client.post("/day-trips", headers=authenticated_headers, json={**payload, "client_id": str(uuid4())}).status_code == 400
+    assert client.post("/day-trips", headers=authenticated_headers, json=payload).status_code == 200
+    response = client.put(path, headers=authenticated_headers, json={**payload, "version": 1})
+    assert response.status_code == 200
+    assert response.get_json()["stops"][1]["destination"]["active"] is False
+
+
+def test_day_trip_migration_preserves_existing_visits():
+    from importlib.util import module_from_spec, spec_from_file_location
+    from pathlib import Path
+    import sqlalchemy as sa
+    from sqlalchemy.orm import Session
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from models import Base, User, Itinerary, DayTrip, DayTripStop
+    previous = sa.MetaData()
+    for table in Base.metadata.sorted_tables:
+        if table.name not in COMMUNITY_TABLES | {"day_trips", "day_trip_stops"}:
+            table.to_metadata(previous)
+    engine = sa.create_engine("sqlite://")
+    previous.create_all(engine)
+    with engine.begin() as connection:
+        connection.execute(User.__table__.insert().values(id=1, name="Alice", password_hash="unused"))
+        connection.execute(Destination.__table__.insert(), BASELINE_DESTINATIONS)
+        connection.execute(Itinerary.__table__.insert().values(id=1, user_id=1, destination_id=1, start_date="2026-10-03", end_date="2026-10-03"))
+        migration_path = Path(__file__).parent.parent / "migrations" / "versions" / "20260926_day_trips.py"
+        spec = spec_from_file_location("day_trip_migration", migration_path)
+        migration = module_from_spec(spec)
+        spec.loader.exec_module(migration)
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.upgrade()
+            migration.upgrade()
+        assert connection.scalar(sa.select(sa.func.count()).select_from(Itinerary)) == 1
+        for model in (DayTrip, DayTripStop):
+            assert {column["name"] for column in sa.inspect(connection).get_columns(model.__tablename__)} == set(model.__table__.columns.keys())
+    with Session(engine) as session:
+        trip = DayTrip(user_id=1, client_id="migration-test", title="Day out", trip_date="2026-10-03", start_time="09:00")
+        trip.stops = [DayTripStop(destination_id=1, position=0, visit_minutes=60), DayTripStop(destination_id=2, position=1, visit_minutes=90)]
+        session.add(trip)
+        session.commit()
+        assert len(trip.stops) == 2
+    engine.dispose()
+
+
+def test_community_migration_preserves_existing_records_and_matches_models():
+    from importlib.util import module_from_spec, spec_from_file_location
+    from pathlib import Path
+    import sqlalchemy as sa
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from models import Base, User, Itinerary, DayTrip
+    previous = sa.MetaData()
+    for table in Base.metadata.sorted_tables:
+        if table.name not in COMMUNITY_TABLES:
+            table.to_metadata(previous)
+    engine = sa.create_engine("sqlite://")
+    previous.create_all(engine)
+    with engine.begin() as connection:
+        connection.execute(User.__table__.insert().values(id=1, name="Alice", password_hash="unused"))
+        connection.execute(Destination.__table__.insert(), BASELINE_DESTINATIONS)
+        connection.execute(Itinerary.__table__.insert().values(id=1, user_id=1, destination_id=1, start_date="2026-10-03", end_date="2026-10-03"))
+        connection.execute(DayTrip.__table__.insert().values(id=1, user_id=1, client_id="previous-trip", title="Existing outing", trip_date="2026-10-03", start_time="09:00"))
+        path = Path(__file__).parent.parent / "migrations" / "versions" / "20260928_community_tools.py"
+        spec = spec_from_file_location("community_migration", path)
+        migration = module_from_spec(spec)
+        spec.loader.exec_module(migration)
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.upgrade()
+            migration.upgrade()
+        assert connection.scalar(sa.select(sa.func.count()).select_from(Itinerary)) == 1
+        assert connection.scalar(sa.select(DayTrip.title)) == "Existing outing"
+        inspector = sa.inspect(connection)
+        for name in COMMUNITY_TABLES:
+            table = Base.metadata.tables[name]
+            assert {column["name"] for column in inspector.get_columns(name)} == set(table.columns.keys())
+            assert {index["name"] for index in inspector.get_indexes(name)} == {index.name for index in table.indexes}
+    engine.dispose()
 
 
 @pytest.mark.parametrize("path", [
@@ -335,7 +732,7 @@ def test_social_migration_preserves_existing_accounts(tmp_path):
     try:
         with engine.begin() as connection:
             connection.execute(text("INSERT INTO users (id, name, email, password_hash, preferences, created_at) VALUES (42, 'Existing Traveler', 'existing@example.com', 'unchanged-hash', '[]', CURRENT_TIMESTAMP)"))
-        subprocess.run([*command, "head"], cwd=backend, env=environment, capture_output=True, text=True, check=True, timeout=60)
+        subprocess.run([*command, "20260919_social_places"], cwd=backend, env=environment, capture_output=True, text=True, check=True, timeout=60)
         assert {"friendships", "direct_messages", "destination_photos", "destination_contributions"} <= set(inspect(engine).get_table_names())
         with engine.connect() as connection:
             assert connection.execute(text("SELECT name, password_hash FROM users WHERE id = 42")).one() == ("Existing Traveler", "unchanged-hash")

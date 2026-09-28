@@ -52,6 +52,11 @@ For a deployment outside Docker, serve `dist/`, configure a fallback to `index.h
 - `react/src/Explore.jsx`: search, filters, saved places, and recommendations.
 - `react/src/PlaceDetail.jsx`: details, nearby places, reviews, and comments.
 - `react/src/Trips.jsx`: itineraries, visit reviews, and responsive weekly planner.
+- `react/src/Notifications.jsx`: private activity feed, unread bell and read acknowledgments.
+- `react/src/DayTrips.jsx`, `TripBudget.jsx`: day-trip editing, invitations, suggestions, voting and actual FCFA expenses.
+- `react/src/Events.jsx`: bilingual event discovery, private interests and administrator publication.
+- `react/src/OfflinePacks.jsx`, `offline.js`: explicit encrypted downloads and a read-only offline viewer.
+- `react/src/Safety.jsx`: blocking, reporting and the administrator moderation queue.
 - `react/src/Account.jsx`: email/phone login, registration, profile, and feedback.
 - `react/src/Recovery.jsx`: email/SMS recovery requests and single-use password reset.
 - `react/src/Admin.jsx`: protected catalogue, fare policy and audit management.
@@ -101,6 +106,42 @@ The additive `20260911_recovery` migration creates `account_security`, `password
 
 Unvisited plans can be edited from My trips or the weekly planner using the existing visit form. Dates, time slot, transport and notes are validated by the API; only the owner may edit or cancel. Cancellation needs confirmation and deletes an unvisited plan, not a venue reservation. Completed visits/reviews cannot be edited or cancelled through these endpoints. Archived destinations stay attached to existing plans so history remains readable.
 
+## Notifications, Shared Trips and Budgets
+
+The header bell opens `/notifications`. The feed includes incoming friend requests, private messages, replies to your comments, invitations and visits/day trips in the next seven days (Cameroon time). It refreshes every 30 seconds while visible and retains per-account read acknowledgments. Social activity covers the last 30 days; the displayed feed is capped at 100 items. Opening a notification marks it read and links to the relevant conversation or plan. These are in-app notifications, not operating-system push, email or SMS reminders.
+
+`/day-trips` extends the existing private day-trip API. An organizer creates a dated itinerary of 2-12 unique, ordered stops, with visit durations, notes and optional estimated costs/budget. The organizer can invite up to 20 accepted friends. Invitations reveal only the title, date and organizer until the recipient accepts. Only the organizer edits the final itinerary or removes guests; accepted members can propose places, vote once per suggestion, and leave. The organizer can add a suggested place through the itinerary editor. Stale itinerary versions are rejected rather than overwritten.
+
+The Budget view keeps actual expenses separate from estimates. A member records a payment they made, chooses a category and the accepted members sharing it. Amounts are whole FCFA; equal splits distribute any remainder deterministically by member ID, so shares and balances reconcile exactly. Retry identifiers prevent duplicate expenses. The payer or organizer may delete an incorrect entry and re-enter it. A departed member's existing expense shares remain in the ledger so historical balances do not change silently. Suggested repayments are calculations only, not payments, bookings or settlement confirmations. Limits are 100 suggestions and 500 expenses per trip.
+
+## Local Events
+
+`/events` supports date ranges, this-weekend selection, category/title filters, pagination and privately saved events. Events use existing catalogue venues and their photos. Times are entered and shown in Cameroon time. Unknown prices remain unknown; zero means free entry. Administrators create bilingual titles/descriptions and a required HTTPS source link, then explicitly publish a draft. Cancelled events disappear from discovery but remain marked cancelled in saved events. There is no scraped feed or fabricated seed event. Organizers' external links and current availability need verification before publication.
+
+## Offline Trip Packs
+
+Save offline on an accepted/owned day trip explicitly stores its title, date, notes, ordered stops and selected place details in IndexedDB. Optional thumbnails are downloaded from local/authenticated images; a missing image does not prevent a text pack. Shared member lists, messages, financial ledgers and tokens are not copied into the pack. The viewer at `/offline-packs` works without a live profile request and exposes no live account functions.
+
+Packs are AES-GCM encrypted using a key derived from the current session token. Another sign-in cannot decrypt them; signing out, an observed session expiry, account changes or blocking changes clear the store. Packs expire after seven days, with a maximum of 20 packs and 5 MB per pack. This protects against accidental account mixing, not a compromised browser or same-origin script that can read the stored token. A previously downloaded snapshot cannot learn about remote revocation while offline. Notes are sensitive: use a trusted device and sign out when finished. No offline edits, map tiles, directions or automatic synchronization are provided.
+
+Offline page reload requires the production build's service worker, HTTPS or localhost, and an initial successful online load. Vite's development server intentionally does not install that worker. Verify the built version with `npm run build`, then `npm run preview`. The app shell remains the only service-worker cache; private packs use the separate encrypted store. Automated reload coverage runs against the preview server on port 5175:
+
+```powershell
+$env:GT_TEST_PRODUCTION = '1'
+npm run test:e2e -- --grep "production shell"
+Remove-Item Env:GT_TEST_PRODUCTION
+```
+
+## Blocking and Moderation
+
+Report and block icons appear beside other travelers' messages, comments and gallery photos. Blocking removes the friendship and its private conversation, rejects new friend requests/private contact in either direction, hides community messages/comments and replies, and removes direct organizer/guest memberships between the two accounts. It does not erase third-party group history or public place records. Unblocking at `/safety` does not restore deleted conversations or friendships.
+
+Reporting requires access to the selected item. The confirmation explains that its text and attached photo/audio will be copied as evidence for administrators; it does not expose the rest of a private conversation. Reports are limited to 10/hour and 20/day per account, with duplicate submissions returning the existing report. Administration's Reports tab offers open/removed/dismissed queues, evidence review and confirmed removal or dismissal. Removal clears the reported message or updates a deleted photo's cover reference; comment replies are preserved. Actions are audited and stale resolutions return a conflict. Evidence remains in database backups after the original item is deleted. Before wider public deployment, define a retention/purge policy and storage budget for reports and media; no scheduled retention job is included.
+
+## Feature Migration
+
+Back up the database before deploying. Install backend requirements, run `alembic upgrade head` from `backend/`, install frontend dependencies with `npm ci`, and rebuild/restart the API and frontend. The additive `20260928_community_tools` migration follows `20260926_day_trips` and adds notification reads, memberships, suggestions/votes, expenses, events/interests, blocks and reports. It does not replace existing users, visits, messages or day trips. Its downgrade deliberately refuses to discard shared financial history or safety state. Local startup creates missing tables, while deployed databases should use Alembic. No paid service/API key is required for these six additions.
+
 ## Google Sign-in and Sign-up
 
 This app uses [Google Identity Services](https://developers.google.com/identity/gsi/web/guides/overview), not an API key or the retired Google Sign-In library. Both login and registration use Google's official button. FedCM is enabled without automatic account selection, and Nginx/Vite allow Google's fallback popup flow.
@@ -123,7 +164,7 @@ Google verifies identity before the backend creates a session. The server valida
 
 Private conversations support text and voice notes. Recording starts only after a user action and browser microphone permission, requires HTTPS or localhost, stops automatically before two minutes, and stops when leaving the conversation. Users can preview, discard or send a recording. Playback fetches audio with the bearer token, never with a token in the URL. A participant may delete their own messages. Removing a friend requires confirmation and deletes that friendship and its private conversation for both people; a fresh request requires acceptance again.
 
-Messages are limited to 2,000 characters. Private sends are capped at 20/minute and 200/day per account. Audio is capped at 5 MB and two minutes, decoded by PyAV on the server, and must be an audio-only WebM, Ogg, MP4 or WAV file. Names and timestamps come from the server, and client UUIDs make retries idempotent. Conversations poll every five seconds while visible; friend lists refresh every ten seconds on the chat page. Messages are access-controlled but are not end-to-end encrypted. Blocking, reporting, moderation queues and push notifications are not included.
+Messages are limited to 2,000 characters. Private sends are capped at 20/minute and 200/day per account. Audio is capped at 5 MB and two minutes, decoded by PyAV on the server, and must be an audio-only WebM, Ogg, MP4 or WAV file. Names and timestamps come from the server, and client UUIDs make retries idempotent. Conversations poll every five seconds while visible; friend lists refresh every ten seconds on the chat page. Messages are access-controlled but are not end-to-end encrypted. Blocking, reporting and moderation are described above; operating-system push notifications are not included.
 
 ## Community Places and Photos
 
@@ -145,7 +186,7 @@ Before deploying the new API, install backend requirements and run `alembic upgr
 
 The visible **Share** button on place cards, place details and map popups opens the device share sheet where available. Otherwise it opens a photo/name/address preview with a selectable link and **Copy link**. Cancelling native sharing does nothing; a failed native share falls back to copying. The URL points to `/places/{id}` on the current app origin, never includes a session token, and returns a signed-out recipient to that exact place after sign-in. For links anyone can open, share from the publicly deployed site; a localhost URL only works on the same computer, and a local-only place must exist on the deployed app before it can be shared publicly. Map/comment links also preserve the destination ID.
 
-The production service worker replaces old GlobeTrotter caches and caches only the app shell and public static assets. API responses and authenticated data are never cached. Offline API operations show a recoverable connection error. Map tiles and directions depend on external services; place images and fonts are served locally.
+The production service worker replaces old GlobeTrotter caches and caches only the app shell and public static assets. API responses and authenticated data never enter that cache. Explicit offline trip downloads use a separate encrypted IndexedDB store as described above. Other offline API operations show a recoverable connection error. Map tiles and directions depend on external services; place images and fonts are served locally.
 
 ## Map and Design
 

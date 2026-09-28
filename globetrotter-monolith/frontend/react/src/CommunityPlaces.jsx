@@ -5,6 +5,7 @@ import { api } from './api';
 import { categories, Empty, ErrorMessage, Label, Loading, Modal, PageHeading, ResourceError } from './components';
 import { AuthenticatedImage } from './Media';
 import { useApp, useResource } from './state';
+import { SafetyActions } from './Safety';
 
 const LocationPicker = lazy(() => import('./MapView').then(module => ({ default: module.LocationPicker })));
 
@@ -153,7 +154,7 @@ export function PlacePhotos({ place }) {
     <ErrorMessage>{error}</ErrorMessage>
     {gallery.loading && !gallery.data ? <Loading /> : gallery.error ? <ResourceError resource={gallery} /> : photos.length ? <div className="community-photo-grid">{photos.map(entry => <figure className="community-photo" key={entry.id}>
       <button type="button" className="photo-open" title={translate('View photo')} aria-label={translate('View photo by {name}', { name: entry.user_name })} onClick={() => setViewing(entry)}><AuthenticatedImage path={entry.image_url} alt={entry.caption || translate('Photo of {name}', { name: place.name })} loading="lazy" retry={false} /></button>
-      <figcaption><div><strong>{translate('Photo by {name}', { name: entry.user_name })}</strong><time dateTime={entry.created_at}>{date(entry.created_at)}</time></div>{entry.caption && <p>{entry.caption}</p>}{(entry.user_id === currentUser.data?.id || session.role === 'admin') && <button type="button" className="icon-button" disabled={busy} title={translate('Delete photo')} aria-label={translate('Delete photo')} onClick={() => setRemoving(entry)}><Trash2 size={16} /></button>}</figcaption>
+      <figcaption><div><strong>{translate('Photo by {name}', { name: entry.user_name })}</strong><time dateTime={entry.created_at}>{date(entry.created_at)}</time></div>{entry.caption && <p>{entry.caption}</p>}<SafetyActions kind="photo" targetId={entry.id} userId={entry.user_id} name={entry.user_name} />{(entry.user_id === currentUser.data?.id || session.role === 'admin') && <button type="button" className="icon-button" disabled={busy} title={translate('Delete photo')} aria-label={translate('Delete photo')} onClick={() => setRemoving(entry)}><Trash2 size={16} /></button>}</figcaption>
     </figure>)}</div> : <Empty title="No community photos yet." message="" />}
     {cursor && <button type="button" className="button secondary gallery-more" disabled={loadingOlder} onClick={loadOlder}><Camera size={17} />{translate('Load more photos')}</button>}
     {viewing && <Modal title="Place photo" onClose={() => setViewing(null)}><AuthenticatedImage path={viewing.image_url} alt={viewing.caption || place.name} className="gallery-full-image" /><p className="photo-attribution">{translate('Photo by {name}', { name: viewing.user_name })}</p>{viewing.caption && <p>{viewing.caption}</p>}</Modal>}

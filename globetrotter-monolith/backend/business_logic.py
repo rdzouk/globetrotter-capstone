@@ -90,6 +90,59 @@ def validate_itinerary_payload(payload, valid_destination_ids):
     return errors
 
 
+def validate_day_trip_payload(payload, valid_destination_ids):
+    if not isinstance(payload, dict):
+        return ["A day trip must be a JSON object."]
+    errors = []
+    title = payload.get("title")
+    if not isinstance(title, str) or not 1 <= len(title.strip()) <= 120:
+        errors.append("Trip name must have 1 to 120 characters.")
+    trip_date = payload.get("trip_date")
+    try:
+        if not isinstance(trip_date, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", trip_date):
+            raise ValueError()
+        date.fromisoformat(trip_date)
+    except ValueError:
+        errors.append("Choose a valid trip date.")
+    start_time = payload.get("start_time")
+    valid_time = isinstance(start_time, str) and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", start_time)
+    if not valid_time:
+        errors.append("Choose a valid start time.")
+    if not isinstance(payload.get("notes", ""), str) or len(payload.get("notes", "")) > 4000:
+        errors.append("Notes must be at most 4000 characters.")
+    for field in ("budget_fcfa", "transport_cost_fcfa"):
+        value = payload.get(field)
+        if value is not None and (type(value) is not int or not 0 <= value <= 10_000_000):
+            errors.append("FCFA amounts must be whole numbers from 0 to 10000000.")
+    stops = payload.get("stops")
+    if not isinstance(stops, list) or not 2 <= len(stops) <= 12:
+        return errors + ["Choose between 2 and 12 stops."]
+    destination_ids = set()
+    visit_minutes = 0
+    for stop in stops:
+        if not isinstance(stop, dict):
+            errors.append("Each stop must be a JSON object.")
+            continue
+        destination_id = stop.get("destination_id")
+        if type(destination_id) is not int or destination_id not in valid_destination_ids:
+            errors.append("Choose an available place for each stop.")
+        elif destination_id in destination_ids:
+            errors.append("Each place can appear only once in a day trip.")
+        else:
+            destination_ids.add(destination_id)
+        duration = stop.get("visit_minutes")
+        if type(duration) is not int or not 5 <= duration <= 720:
+            errors.append("Visit duration must be between 5 and 720 minutes.")
+        else:
+            visit_minutes += duration
+        cost = stop.get("cost_fcfa")
+        if cost is not None and (type(cost) is not int or not 0 <= cost <= 10_000_000):
+            errors.append("FCFA amounts must be whole numbers from 0 to 10000000.")
+    if valid_time and int(start_time[:2]) * 60 + int(start_time[3:]) + visit_minutes > 1440:
+        errors.append("Visits must fit within the selected day.")
+    return list(dict.fromkeys(errors))
+
+
 def validate_registration_payload(payload):
     """
     name is required and MAY duplicate across users (it's just a display name).

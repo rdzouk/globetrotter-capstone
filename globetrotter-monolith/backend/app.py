@@ -41,6 +41,10 @@ import fares
 from administration import register_administration
 from social import register_social
 from contributions import register_contributions
+from notifications import register_notifications
+from collaboration import register_collaboration
+from events import register_events
+from safety import register_safety
 
 database.init_db()
 
@@ -102,6 +106,10 @@ def require_auth(f):
 register_administration(app, require_auth)
 register_social(app, require_auth, limiter)
 register_contributions(app, require_auth, limiter)
+register_notifications(app, require_auth, limiter)
+register_collaboration(app, require_auth, limiter)
+register_events(app, require_auth, limiter)
+register_safety(app, require_auth, limiter)
 
 
 # Request lifecycle: ID assignment, timing, structured logging,
@@ -442,6 +450,62 @@ def change_plan(itinerary_id):
     return jsonify(result), 200
 
 
+@app.route("/day-trips", methods=["GET"])
+@require_auth
+def list_day_trips():
+    return jsonify(db.get_day_trips_for_user(request.user_id)), 200
+
+
+@app.route("/day-trips", methods=["POST"])
+@require_auth
+@limiter.limit("20/hour;100/day", key_func=lambda: str(request.user_id))
+def create_day_trip():
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "A day trip must be a JSON object."}), 400
+    try:
+        client_id = str(uuid.UUID(body.get("client_id", "")))
+    except (ValueError, TypeError, AttributeError):
+        return jsonify({"error": "A valid trip request ID is required."}), 400
+    existing = db.get_day_trip_by_client_id(request.user_id, client_id)
+    if existing:
+        return jsonify(existing), 200
+    errors = logic.validate_day_trip_payload(body, {place["id"] for place in db.get_destinations()})
+    if errors:
+        return jsonify({"errors": errors}), 400
+    try:
+        saved = db.add_day_trip(request.user_id, client_id, body)
+    except IntegrityError:
+        existing = db.get_day_trip_by_client_id(request.user_id, client_id)
+        if not existing:
+            raise
+        return jsonify(existing), 200
+    return jsonify(saved), 201
+
+
+@app.route("/day-trips/<int:trip_id>", methods=["GET", "PUT", "DELETE"])
+@require_auth
+def day_trip_details(trip_id):
+    trip = db.get_day_trip_for_user(request.user_id, trip_id)
+    if not trip:
+        return jsonify({"error": "Day trip not found."}), 404
+    if request.method == "GET":
+        return jsonify(trip), 200
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or type(body.get("version")) is not int or not 1 <= body["version"] < 2_147_483_647:
+        return jsonify({"error": "A valid trip version is required."}), 400
+    payload = body if request.method == "PUT" else None
+    if payload is not None:
+        valid_ids = {place["id"] for place in db.get_destinations()} | {stop["destination_id"] for stop in trip["stops"]}
+        errors = logic.validate_day_trip_payload(payload, valid_ids)
+        if errors:
+            return jsonify({"errors": errors}), 400
+    result = db.change_day_trip(request.user_id, trip_id, body["version"], payload)
+    if result is None:
+        return jsonify({"error": "This day trip has changed. Reload it before editing."}), 409
+    return jsonify(result), 200
+
+
 # GET /destinations/<id>/reviews
 # Every user's review of this place — this is the "place page" of
 # reviews and critiques, available to signed-in travelers.
@@ -462,7 +526,7 @@ def destination_reviews(destination_id):
 def list_destination_comments(destination_id):
     if not db.get_destination_by_id(destination_id):
         return jsonify({"error": "destination not found"}), 404
-    return jsonify(db.get_comments_for_place(destination_id)), 200
+    return jsonify(db.get_comments_for_place(destination_id, request.user_id)), 200
 
 
 @app.route("/destinations/<int:destination_id>/comments", methods=["POST"])
@@ -492,7 +556,10 @@ def create_destination_comment(destination_id):
         if parent.get("parent_comment_id") is not None:
             return jsonify({"error": "reply nesting is limited to one level"}), 400
 
-    comment = db.add_comment(destination_id, request.user_id, parent_comment_id, message)
+    try:
+        comment = db.add_comment(destination_id, request.user_id, parent_comment_id, message)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 404
     return jsonify(comment), 201
 
 
@@ -658,7 +725,7 @@ def chat_messages():
             raise ValueError()
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid message pagination."}), 400
-    return jsonify(db.get_chat_messages(before_id, limit)), 200
+    return jsonify(db.get_chat_messages(before_id, limit, request.user_id)), 200
 
 
 @app.route("/chat/messages", methods=["POST"])

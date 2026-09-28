@@ -16,6 +16,8 @@ from sqlalchemy.orm import aliased, joinedload
 from database import get_session
 from models import User, Destination, Itinerary, Favorite, Feedback, Comment, GoogleIdentity, ChatMessage, AccountSecurity, DestinationPublication
 from models import Friendship, DirectMessage, DestinationContribution, DestinationPhoto
+from models import DayTrip, DayTripStop
+from safety import blocked_user_ids
 
 
 def _utc_iso(value):
@@ -60,6 +62,20 @@ def _itinerary_to_dict(i):
     }
 
 
+def _day_trip_to_dict(trip):
+    return {
+        "id": trip.id, "user_id": trip.user_id, "client_id": trip.client_id,
+        "title": trip.title, "trip_date": trip.trip_date, "start_time": trip.start_time,
+        "budget_fcfa": trip.budget_fcfa, "transport_cost_fcfa": trip.transport_cost_fcfa,
+        "notes": trip.notes, "version": trip.version, "created_at": _utc_iso(trip.created_at),
+        "stops": [{
+            "destination_id": stop.destination_id, "position": stop.position,
+            "visit_minutes": stop.visit_minutes, "cost_fcfa": stop.cost_fcfa,
+            "destination": _destination_to_dict(stop.destination),
+        } for stop in trip.stops],
+    }
+
+
 def _feedback_to_dict(f):
     return {"id": f.id, "user_id": f.user_id, "user_name": f.user_name, "message": f.message, "rating": f.rating}
 
@@ -99,7 +115,12 @@ def _find_friendship(session, user_id, friendship_id, accepted=False):
     )
     if accepted:
         query = query.filter(Friendship.accepted.is_(True))
-    return query.first()
+    friendship = query.first()
+    if friendship:
+        other_id = friendship.higher_user_id if friendship.lower_user_id == user_id else friendship.lower_user_id
+        if other_id in blocked_user_ids(session, user_id):
+            return None
+    return friendship
 
 
 def get_friendships(user_id):
@@ -115,6 +136,8 @@ def request_friendship(user_id, friend_id):
         raise ValueError("Choose another traveler.")
     with get_session() as session:
         if not session.get(User, friend_id):
+            raise ValueError("Traveler unavailable.")
+        if friend_id in blocked_user_ids(session, user_id):
             raise ValueError("Traveler unavailable.")
         lower_id, higher_id = sorted((user_id, friend_id))
         friendship = session.query(Friendship).filter_by(lower_user_id=lower_id, higher_user_id=higher_id).first()
@@ -412,6 +435,67 @@ def change_pending_itinerary(itinerary_id, user_id, updates=None):
         return _itinerary_to_dict(session.get(Itinerary, itinerary_id))
 
 
+def get_day_trips_for_user(user_id):
+    with get_session() as session:
+        trips = session.query(DayTrip).filter(DayTrip.user_id == user_id).order_by(DayTrip.trip_date, DayTrip.start_time, DayTrip.id).all()
+        return [_day_trip_to_dict(trip) for trip in trips]
+
+
+def get_day_trip_for_user(user_id, trip_id):
+    with get_session() as session:
+        trip = session.query(DayTrip).filter(DayTrip.user_id == user_id, DayTrip.id == trip_id).first()
+        return _day_trip_to_dict(trip) if trip else None
+
+
+def get_day_trip_by_client_id(user_id, client_id):
+    with get_session() as session:
+        trip = session.query(DayTrip).filter(DayTrip.user_id == user_id, DayTrip.client_id == client_id).first()
+        return _day_trip_to_dict(trip) if trip else None
+
+
+def _day_trip_values(payload):
+    return {
+        "title": payload["title"].strip(), "trip_date": payload["trip_date"],
+        "start_time": payload["start_time"], "notes": payload.get("notes", ""),
+        "budget_fcfa": payload.get("budget_fcfa"),
+        "transport_cost_fcfa": payload.get("transport_cost_fcfa"),
+    }
+
+
+def _day_trip_stops(payload):
+    return [DayTripStop(
+        position=position, destination_id=stop["destination_id"],
+        visit_minutes=stop["visit_minutes"], cost_fcfa=stop.get("cost_fcfa"),
+    ) for position, stop in enumerate(payload["stops"])]
+
+
+def add_day_trip(user_id, client_id, payload):
+    with get_session() as session:
+        trip = DayTrip(user_id=user_id, client_id=client_id, **_day_trip_values(payload))
+        trip.stops = _day_trip_stops(payload)
+        session.add(trip)
+        session.flush()
+        return _day_trip_to_dict(trip)
+
+
+def change_day_trip(user_id, trip_id, version, payload=None):
+    with get_session() as session:
+        query = session.query(DayTrip).filter(DayTrip.user_id == user_id, DayTrip.id == trip_id, DayTrip.version == version)
+        values = {"version": version + 1, **(_day_trip_values(payload) if payload is not None else {})}
+        if not query.update(values, synchronize_session=False):
+            return None
+        trip = session.get(DayTrip, trip_id)
+        if payload is None:
+            session.delete(trip)
+            session.flush()
+            return {"removed": True}
+        trip.stops.clear()
+        session.flush()
+        trip.stops.extend(_day_trip_stops(payload))
+        session.flush()
+        return _day_trip_to_dict(trip)
+
+
 def get_reviews_for_destination(destination_id):
     """All reviews left on a given place, across every user, newest first."""
     with get_session() as s:
@@ -443,11 +527,12 @@ def get_comment_by_id(comment_id):
         return _comment_to_dict(c) if c else None
 
 
-def get_comments_for_place(place_id):
+def get_comments_for_place(place_id, viewer_id=None):
     with get_session() as s:
+        hidden = blocked_user_ids(s, viewer_id)
         rows = (
             s.query(Comment)
-            .filter(Comment.place_id == place_id)
+            .filter(Comment.place_id == place_id, ~Comment.user_id.in_(hidden))
             .order_by(Comment.created_at.asc())
             .all()
         )
@@ -470,6 +555,10 @@ def get_comments_for_place(place_id):
 
 def add_comment(place_id, user_id, parent_comment_id, message):
     with get_session() as s:
+        if parent_comment_id is not None:
+            parent = s.get(Comment, parent_comment_id)
+            if not parent or parent.user_id in blocked_user_ids(s, user_id):
+                raise ValueError("parent comment not found")
         c = Comment(
             place_id=place_id,
             user_id=user_id,
@@ -566,8 +655,10 @@ def google_user(subject, email, name, password_hash):
         return _user_to_dict(user), True
 
 
-def _chat_to_dict(message):
+def _chat_to_dict(message, hidden=None):
     reply = message.reply_to
+    if reply and reply.user_id in (hidden or set()):
+        reply = None
     return {
         "id": message.id, "user_id": message.user_id,
         "user_name": message.user.name if message.user else "Former user",
@@ -582,13 +673,14 @@ def _chat_to_dict(message):
     }
 
 
-def get_chat_messages(before_id=None, limit=50):
+def get_chat_messages(before_id=None, limit=50, viewer_id=None):
     with get_session() as session:
-        query = session.query(ChatMessage).options(joinedload(ChatMessage.user), joinedload(ChatMessage.reply_to).joinedload(ChatMessage.user))
+        hidden = blocked_user_ids(session, viewer_id)
+        query = session.query(ChatMessage).options(joinedload(ChatMessage.user), joinedload(ChatMessage.reply_to).joinedload(ChatMessage.user)).filter(~ChatMessage.user_id.in_(hidden))
         if before_id is not None:
             query = query.filter(ChatMessage.id < before_id)
         rows = query.order_by(ChatMessage.id.desc()).limit(limit + 1).all()
-        return {"messages": [_chat_to_dict(message) for message in reversed(rows[:limit])], "has_more": len(rows) > limit}
+        return {"messages": [_chat_to_dict(message, hidden) for message in reversed(rows[:limit])], "has_more": len(rows) > limit}
 
 
 def add_chat_message(user_id, message, client_id, reply_to_id=None):
@@ -598,12 +690,12 @@ def add_chat_message(user_id, message, client_id, reply_to_id=None):
             return _chat_to_dict(existing), False
         if reply_to_id is not None:
             reply = session.get(ChatMessage, reply_to_id)
-            if not reply or reply.deleted:
+            if not reply or reply.deleted or reply.user_id in blocked_user_ids(session, user_id):
                 raise ValueError("Message unavailable")
         record = ChatMessage(user_id=user_id, message=message, client_id=client_id, reply_to_id=reply_to_id)
         session.add(record)
         session.flush()
-        return _chat_to_dict(record), True
+        return _chat_to_dict(record, blocked_user_ids(session, user_id)), True
 
 
 def delete_chat_message(user_id, message_id):
@@ -622,7 +714,7 @@ def get_profile_activity(user_id):
         reviews = session.query(Itinerary).options(joinedload(Itinerary.destination)).filter(Itinerary.user_id == user_id, Itinerary.review_rating.isnot(None)).order_by(Itinerary.created_at.desc()).limit(50).all()
         comments = session.query(Comment).options(joinedload(Comment.destination), joinedload(Comment.user)).filter(Comment.user_id == user_id).order_by(Comment.created_at.desc()).limit(50).all()
         parent = aliased(Comment)
-        replies = session.query(Comment, parent).join(parent, Comment.parent_comment_id == parent.id).filter(parent.user_id == user_id, Comment.user_id != user_id).order_by(Comment.created_at.desc()).limit(50).all()
+        replies = session.query(Comment, parent).join(parent, Comment.parent_comment_id == parent.id).filter(parent.user_id == user_id, Comment.user_id != user_id, ~Comment.user_id.in_(blocked_user_ids(session, user_id))).order_by(Comment.created_at.desc()).limit(50).all()
         return {
             "reviews": [{**_itinerary_to_dict(review), "destination_name": review.destination.name} for review in reviews],
             "comments": [{**_comment_to_dict(comment), "destination_name": comment.destination.name} for comment in comments],

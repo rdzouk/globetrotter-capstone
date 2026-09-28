@@ -30,6 +30,7 @@ import {
   ShieldCheck,
   Sun,
   UserRound,
+  Users,
   X,
 } from "lucide-react";
 import { useApp } from "./state";
@@ -39,11 +40,17 @@ import Explore from "./Explore";
 import PlaceDetail from "./PlaceDetail";
 import Trips from "./Trips";
 import { AuthPage, Feedback, Profile } from "./Account";
+import Notifications, { NotificationBell } from './Notifications';
+import OfflinePacks from './OfflinePacks';
+import Safety from './Safety';
+import './features.css';
 
 const Chat = lazy(() => import('./Chat'));
 const Recovery = lazy(() => import('./Recovery'));
 const Admin = lazy(() => import('./Admin'));
 const AddPlace = lazy(() => import('./CommunityPlaces'));
+const DayTrips = lazy(() => import('./DayTrips'));
+const Events = lazy(() => import('./Events'));
 
 const navigation = [
   ["/", "Explore", Compass],
@@ -51,6 +58,8 @@ const navigation = [
   ["/recommendations", "For you", Sparkles],
   ["/favorites", "Saved places", Heart],
   ["/itineraries", "My trips", RouteIcon],
+  ["/day-trips", "Day trips", Users],
+  ["/events", "Events", CalendarDays],
   ["/planner", "Weekly planner", CalendarDays],
   ["/chat", "Messages", MessagesSquare],
 ];
@@ -70,6 +79,11 @@ const titles = {
   "/reset-password": "Reset password",
   "/chat": "Messages",
   "/admin": "Administration",
+  "/notifications": "Notifications",
+  "/day-trips": "Day trips",
+  "/events": "Events",
+  "/offline-packs": "Offline trip packs",
+  "/safety": "Blocked travelers",
 };
 
 function RequireAuth({ children }) {
@@ -201,6 +215,7 @@ function Sidebar({ menuOpen, setMenuOpen }) {
         ))}
       </nav>
       <div className="sidebar-bottom">
+        <NavLink to="/safety" className="nav-item"><ShieldCheck size={19} />{translate('Blocked travelers')}</NavLink>
         {session.role === 'admin' && <NavLink to="/admin" className="nav-item"><ShieldCheck size={19} />{translate('Administration')}</NavLink>}
         <div className="city-note">
           <span className="city-dot" />
@@ -308,8 +323,9 @@ export default function App() {
     };
   }, [menuOpen]);
   const isAuthPage = /^\/(login|register|forgot-password|reset-password)\/?$/.test(location.pathname);
+  if (location.pathname === '/offline-packs' && session.token) return <main className="offline-shell"><OfflinePacks key={session.token} /></main>;
   if (session.token && !session.verified) {
-    return <main className="session-check">{sessionError ? <Empty title="Unable to verify your session" message={sessionError}><button className="button" onClick={retrySession}>{translate("Try again")}</button><button className="button secondary" onClick={signOut}>{translate("Sign out")}</button></Empty> : <Loading />}</main>;
+    return <main className="session-check">{sessionError ? <Empty title="Unable to verify your session" message={sessionError}><button className="button" onClick={retrySession}>{translate("Try again")}</button><button className="button secondary" onClick={signOut}>{translate("Sign out")}</button><Link className="button secondary" to="/offline-packs">{translate('Offline trip packs')}</Link></Empty> : <Loading />}</main>;
   }
   if (!session.token && !isAuthPage) {
     return <Navigate to="/login" state={{ from: location.pathname + location.search + location.hash }} replace />;
@@ -367,6 +383,7 @@ export default function App() {
               <span>{translate("Yaounde, Cameroon")}</span>
             </span>
             <ThemeControls />
+            {!isAuthPage && <NotificationBell />}
             {isAuthPage ? <AppearanceControls /> : <Link
               className="topbar-account"
               to={session.token ? "/profile" : "/login"}
@@ -442,6 +459,10 @@ export default function App() {
               }
             />
             <Route path="/feedback" element={<Feedback />} />
+            <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
+            <Route path="/day-trips" element={<RequireAuth><Suspense fallback={<Loading />}><DayTrips /></Suspense></RequireAuth>} />
+            <Route path="/events" element={<RequireAuth><Suspense fallback={<Loading />}><Events /></Suspense></RequireAuth>} />
+            <Route path="/safety" element={<RequireAuth><Suspense fallback={<Loading />}><Safety /></Suspense></RequireAuth>} />
             <Route path="/admin" element={<RequireAuth><Suspense fallback={<Loading />}><Admin /></Suspense></RequireAuth>} />
             <Route path="/chat" element={<RequireAuth><Suspense fallback={<Loading />}><Chat /></Suspense></RequireAuth>} />
             <Route path="/login" element={<AuthPage key="login" />} />

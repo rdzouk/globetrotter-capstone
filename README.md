@@ -2,6 +2,8 @@
 
 A responsive React application for exploring Yaounde, saving places, planning visits, and sharing reviews. Travelers can add friends from place conversations, send private text and voice notes, contribute places with map-selected locations, and add attributed photos to place galleries. Google sign-in uses Google Identity Services and requires your own configured Web OAuth client ID.
 
+The app also includes an in-app notification center, invite-only day trips with place voting, an FCFA expense ledger with equal splits, source-linked local events, encrypted offline trip packs, and blocking/reporting with administrator moderation. Events start empty until an administrator publishes verified listings; expense balances do not move money.
+
 ## Supported Application
 
 - `globetrotter-monolith/frontend/`: React 19 and Vite, the only user interface.

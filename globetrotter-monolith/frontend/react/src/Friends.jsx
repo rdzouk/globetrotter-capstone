@@ -4,11 +4,13 @@ import { Check, Clock, MessageCircle, RefreshCw, Search, UserPlus, UserRoundMinu
 import { api } from './api';
 import { ErrorMessage, Loading, Modal } from './components';
 import { useApp } from './state';
+import { SafetyActions } from './Safety';
 
 export function FriendButton({ userId, name }) {
-  const { currentUser, friends, translate, setToast } = useApp();
+  const { currentUser, friends, blocks, translate, setToast } = useApp();
   const [busy, setBusy] = useState(false);
   if (!userId || !currentUser.data || currentUser.data.id === userId) return null;
+  if (blocks.data?.some(person => person.user_id === userId)) return null;
   const friend = friends.data?.find(entry => entry.user_id === userId);
   if (friend?.status === 'accepted') return <Link className="text-button friend-action" to={`/chat?view=friends&friend=${friend.id}`} aria-label={translate('Message {name}', { name })}><MessageCircle size={15} />{translate('Message')}</Link>;
   if (friend?.status === 'incoming') return <Link className="text-button friend-action" to="/chat?view=friends"><UserPlus size={15} />{translate('Respond to request')}</Link>;
@@ -49,7 +51,7 @@ export function FriendDirectory({ selectedId, onSelect, onRemoved }) {
     <label className="friend-search"><Search size={16} /><input type="search" aria-label={translate('Search friends')} placeholder={translate('Search friends')} value={search} onChange={event => setSearch(event.target.value)} /></label>
     <ErrorMessage>{error || friends.error}</ErrorMessage>
     {friends.loading && !friends.data ? <Loading /> : <>
-      <div className="friend-list">{accepted.map(friend => <div key={friend.id} className={`friend-list-item ${friend.id === selectedId ? 'selected' : ''}`}><button className="friend-row" onClick={() => onSelect(friend.id)} aria-pressed={friend.id === selectedId}><span className="avatar small">{friend.name.charAt(0)}</span><strong>{friend.name}</strong></button><button className="icon-button" aria-label={translate('Remove {name} as a friend', { name: friend.name })} title={translate('Remove friend')} onClick={() => setRemoving(friend)}><UserRoundMinus size={16} /></button></div>)}</div>
+      <div className="friend-list">{accepted.map(friend => <div key={friend.id} className={`friend-list-item ${friend.id === selectedId ? 'selected' : ''}`}><button className="friend-row" onClick={() => onSelect(friend.id)} aria-pressed={friend.id === selectedId}><span className="avatar small">{friend.name.charAt(0)}</span><strong>{friend.name}</strong></button><SafetyActions userId={friend.user_id} name={friend.name} /><button className="icon-button" aria-label={translate('Remove {name} as a friend', { name: friend.name })} title={translate('Remove friend')} onClick={() => setRemoving(friend)}><UserRoundMinus size={16} /></button></div>)}</div>
       {!accepted.length && <p className="muted friend-empty">{translate(search ? 'No matching friends.' : 'No friends yet.')}</p>}
       <h3 className="friend-requests-heading">{translate('Friend requests')}</h3>
       {!requests.length && <p className="muted friend-empty">{translate('No friend requests.')}</p>}

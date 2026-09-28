@@ -37,6 +37,7 @@ class User(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     itineraries: Mapped[list["Itinerary"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    day_trips: Mapped[list["DayTrip"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     favorites: Mapped[list["Favorite"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     comments: Mapped[list["Comment"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     feedback_entries: Mapped[list["Feedback"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -53,6 +54,14 @@ class AccountSecurity(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     session_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
+
+
+class NotificationRead(Base):
+    __tablename__ = "notification_reads"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    notification_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    read_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
 class PasswordReset(Base):
@@ -188,6 +197,174 @@ class Itinerary(Base):
     __table_args__ = (
         Index("ix_itineraries_user_id", "user_id"),
         Index("ix_itineraries_destination_id", "destination_id"),
+    )
+
+
+class DayTrip(Base):
+    __tablename__ = "day_trips"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    client_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    trip_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    start_time: Mapped[str] = mapped_column(String(5), nullable=False)
+    budget_fcfa: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    transport_cost_fcfa: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="day_trips")
+    stops: Mapped[list["DayTripStop"]] = relationship(back_populates="trip", cascade="all, delete-orphan", order_by="DayTripStop.position", lazy="selectin")
+    members: Mapped[list["TripMember"]] = relationship(cascade="all, delete-orphan")
+    suggestions: Mapped[list["TripSuggestion"]] = relationship(cascade="all, delete-orphan")
+    expenses: Mapped[list["TripExpense"]] = relationship(cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "client_id", name="uq_day_trip_client"),
+        Index("ix_day_trips_user_date", "user_id", "trip_date"),
+        CheckConstraint("budget_fcfa IS NULL OR budget_fcfa BETWEEN 0 AND 10000000", name="ck_day_trip_budget"),
+        CheckConstraint("transport_cost_fcfa IS NULL OR transport_cost_fcfa BETWEEN 0 AND 10000000", name="ck_day_trip_transport_cost"),
+    )
+
+
+class DayTripStop(Base):
+    __tablename__ = "day_trip_stops"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    day_trip_id: Mapped[int] = mapped_column(ForeignKey("day_trips.id", ondelete="CASCADE"), nullable=False)
+    destination_id: Mapped[int] = mapped_column(ForeignKey("destinations.id"), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    visit_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    cost_fcfa: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    trip: Mapped["DayTrip"] = relationship(back_populates="stops")
+    destination: Mapped["Destination"] = relationship(lazy="joined")
+
+    __table_args__ = (
+        UniqueConstraint("day_trip_id", "position", name="uq_day_trip_stop_position"),
+        UniqueConstraint("day_trip_id", "destination_id", name="uq_day_trip_stop_destination"),
+        CheckConstraint("position BETWEEN 0 AND 11", name="ck_day_trip_stop_position"),
+        CheckConstraint("visit_minutes BETWEEN 5 AND 720", name="ck_day_trip_stop_duration"),
+        CheckConstraint("cost_fcfa IS NULL OR cost_fcfa BETWEEN 0 AND 10000000", name="ck_day_trip_stop_cost"),
+    )
+
+
+class TripMember(Base):
+    __tablename__ = "trip_members"
+
+    day_trip_id: Mapped[int] = mapped_column(ForeignKey("day_trips.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+    accepted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    user: Mapped["User"] = relationship(lazy="joined")
+
+
+class TripSuggestion(Base):
+    __tablename__ = "trip_suggestions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    day_trip_id: Mapped[int] = mapped_column(ForeignKey("day_trips.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    destination_id: Mapped[int] = mapped_column(ForeignKey("destinations.id"), nullable=False)
+    user: Mapped["User"] = relationship(lazy="joined")
+    destination: Mapped["Destination"] = relationship(lazy="joined")
+    votes: Mapped[list["TripVote"]] = relationship(cascade="all, delete-orphan", lazy="selectin")
+
+    __table_args__ = (UniqueConstraint("day_trip_id", "destination_id", name="uq_trip_suggestion_place"),)
+
+
+class TripVote(Base):
+    __tablename__ = "trip_votes"
+
+    suggestion_id: Mapped[int] = mapped_column(ForeignKey("trip_suggestions.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+
+
+class TripExpense(Base):
+    __tablename__ = "trip_expenses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    day_trip_id: Mapped[int] = mapped_column(ForeignKey("day_trips.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    client_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    category: Mapped[str] = mapped_column(String(20), nullable=False)
+    amount_fcfa: Mapped[int] = mapped_column(Integer, nullable=False)
+    participants: Mapped[list] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    user: Mapped["User"] = relationship(lazy="joined")
+
+    __table_args__ = (
+        UniqueConstraint("day_trip_id", "user_id", "client_id", name="uq_trip_expense_client"),
+        CheckConstraint("amount_fcfa BETWEEN 1 AND 10000000", name="ck_trip_expense_amount"),
+        CheckConstraint("category IN ('transport', 'food', 'entry', 'stay', 'other')", name="ck_trip_expense_category"),
+    )
+
+
+class LocalEvent(Base):
+    __tablename__ = "local_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    destination_id: Mapped[int] = mapped_column(ForeignKey("destinations.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    title_fr: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    description_fr: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(String(30), nullable=False)
+    starts_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    ends_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    price_fcfa: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    destination: Mapped["Destination"] = relationship(lazy="joined")
+
+    __table_args__ = (
+        CheckConstraint("price_fcfa IS NULL OR price_fcfa BETWEEN 0 AND 10000000", name="ck_event_price"),
+        CheckConstraint("status IN ('draft', 'published', 'cancelled')", name="ck_event_status"),
+        CheckConstraint("ends_at > starts_at", name="ck_event_dates"),
+    )
+
+
+class EventInterest(Base):
+    __tablename__ = "event_interests"
+
+    event_id: Mapped[int] = mapped_column(ForeignKey("local_events.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+
+
+class UserBlock(Base):
+    __tablename__ = "user_blocks"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    blocked_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (CheckConstraint("user_id != blocked_user_id", name="ck_block_other_user"),)
+
+
+class ContentReport(Base):
+    __tablename__ = "content_reports"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reporter_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    target_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str] = mapped_column(String(30), nullable=False)
+    details: Mapped[str] = mapped_column(String(1000), default="", nullable=False)
+    snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
+    evidence: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
+    evidence_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="open", nullable=False, index=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    resolved_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("reporter_id", "target_type", "target_id", name="uq_content_report_author_target"),
+        CheckConstraint("status IN ('open', 'dismissed', 'removed')", name="ck_report_status"),
     )
 
 

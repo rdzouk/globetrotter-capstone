@@ -61,6 +61,10 @@ jobs:
           npm test
           npm run build
           npm run test:e2e
+      - name: Verify production offline reload
+        env:
+          GT_TEST_PRODUCTION: '1'
+        run: npm run test:e2e -- --grep "production shell"
 
   docker-build:
     name: Docker build

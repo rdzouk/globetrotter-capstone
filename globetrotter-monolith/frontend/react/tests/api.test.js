@@ -1,6 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { api } from '../src/api.js';
+import { decryptPack, encryptPack, offlineSnapshot } from '../src/offline.js';
+
+test('offline packs encrypt selected details and reject another session', async () => {
+  const trip = { id: 1, title: 'Private outing', trip_date: '2026-10-03', start_time: '09:00', notes: 'Our plans',
+    budget: { secret: true }, members: [{ name: 'Private member' }],
+    stops: [{ destination_id: 1, visit_minutes: 60, cost_fcfa: 100, destination: { name: 'Tassa', address: 'Bastos', lat: 3.8, lng: 11.5, description: 'A cafe' } }] };
+  const snapshot = offlineSnapshot(trip, new Date('2026-10-01T10:00:00Z'));
+  assert.equal(snapshot.expires_at, '2026-10-08T10:00:00.000Z');
+  assert.equal(snapshot.trip.members, undefined);
+  assert.equal(snapshot.trip.budget, undefined);
+  assert.equal(snapshot.trip.stops[0].cost_fcfa, undefined);
+  const encrypted = await encryptPack('session-one', snapshot);
+  assert.equal(new TextDecoder().decode(encrypted.ciphertext).includes('Private outing'), false);
+  assert.deepEqual(await decryptPack('session-one', encrypted), JSON.parse(JSON.stringify(snapshot)));
+  await assert.rejects(() => decryptPack('session-two', encrypted));
+  const corrupted = { ...encrypted, ciphertext: encrypted.ciphertext.slice(0) };
+  new Uint8Array(corrupted.ciphertext)[0] ^= 1;
+  await assert.rejects(() => decryptPack('session-one', corrupted));
+});
 
 test('API preserves JSON requests, multipart boundaries and authenticated media', async () => {
   const originalFetch = globalThis.fetch;
